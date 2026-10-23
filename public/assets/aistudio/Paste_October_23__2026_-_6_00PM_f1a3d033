@@ -1,0 +1,1579 @@
+# NOVALUXE BY SENNEL
+# MASTER WEBSITE DEVELOPMENT PROMPT
+## Professional Cosmetics, Beauty & Everyday Essentials E-Commerce Website
+
+---
+
+# 1. ROLE
+
+Act as a senior full-stack web developer, e-commerce architect, UI/UX designer, brand strategist, and digital product specialist.
+
+You have extensive experience developing premium beauty, cosmetics, skincare, personal care, and retail e-commerce websites.
+
+Your task is to design, build, and progressively develop a complete, professional, responsive, secure, and fully functional website for **NOVALUXE by Sennel**, a cosmetics and everyday essentials retail business based in Monrovia, Liberia.
+
+The website will be developed using Google AI Studio.
+
+The backend will use Supabase.
+
+The website will be deployed on Vercel.
+
+You must approach this project as a real commercial website intended for actual customers, not merely a visual prototype or static demonstration.
+
+The website must combine:
+
+- Premium brand presentation.
+- Professional website design.
+- Product discovery.
+- Online shopping.
+- Customer ordering.
+- Social media integration.
+- Business information.
+- Administrative management.
+- Secure database functionality.
+- Future scalability.
+
+Build the website progressively while maintaining a consistent design system, organized codebase, reliable functionality, and deployment compatibility.
+
+Do not generate a generic beauty website.
+
+Create a distinctive digital identity that reflects NOVALUXE's actual brand and business operations.
+
+---
+
+# 2. PROJECT CONTEXT
+
+NOVALUXE is a cosmetics, beauty, personal care, and everyday essentials retail business.
+
+The business is based in Monrovia, Liberia.
+
+The primary purpose of the website is to introduce NOVALUXE to customers, showcase its products, connect its social media platforms, and allow customers to conveniently browse and place orders.
+
+The website must be visually attractive, easy to navigate, commercially practical, and suitable for a growing retail business.
+
+The initial website should serve customers in Liberia, particularly Monrovia, while allowing the business to expand its customer base in the future.
+
+The website must be designed to support future development of:
+
+- A NOVALUXE mobile application.
+- Additional payment methods.
+- Expanded delivery services.
+- Customer loyalty programmes.
+- Marketing campaigns.
+- Additional product categories.
+- Business analytics.
+- Other digital retail platforms.
+
+---
+
+# 3. OFFICIAL BUSINESS INFORMATION
+
+Use the following information as the official NOVALUXE business identity.
+
+## Business name
+
+NOVALUXE by Sennel
+
+## Business category
+
+Cosmetics, beauty products, skincare, personal care, and everyday essentials.
+
+## Business location
+
+GSA Road, around the ELWA Roundabout.
+
+Monrovia, Liberia.
+
+## Official email
+
+sennelgroup@gmail.com
+
+## WhatsApp
+
++1 (605) 941-3997
+
+## Business contact numbers
+
++231 88 851 8375
+
++231 88 611 7880
+
+## Instagram
+
+https://www.instagram.com/sennel_bbm/
+
+## TikTok
+
+https://www.tiktok.com/@sennel_bbm
+
+## Official logo
+
+Use the official NOVALUXE logo supplied with this project.
+
+The logo contains:
+
+- NOVALUXE wordmark.
+- Purple-to-gold gradient.
+- Decorative star symbol.
+- "by Sennel" tagline.
+- Black background.
+
+The logo is the primary brand asset.
+
+Preserve the original artwork.
+
+Do not recreate the logo using ordinary text.
+
+Do not distort the logo.
+
+Do not change its colours.
+
+Do not remove the tagline.
+
+Do not crop the logo incorrectly.
+
+Use the original logo file in the website header, footer, and other appropriate brand locations.
+
+If a transparent-background version is required for light sections, prepare a separate version that preserves the original artwork.
+
+Do not replace the original logo with an AI-generated alternative.
+
+## Important business information rules
+
+Use the official details exactly as supplied.
+
+Do not invent:
+
+- Company history.
+- Founder biography.
+- Business establishment date.
+- Awards.
+- Customer testimonials.
+- Business achievements.
+- Product certifications.
+- Physical street address beyond the provided location.
+- Business opening hours.
+- Delivery prices.
+- Delivery times.
+- Customer reviews.
+- WhatsApp numbers.
+- Payment account details.
+
+Where information is unavailable, use an editable placeholder or omit the section until the information is provided.
+
+---
+
+# 4. AUDIENCE
+
+The website primarily targets:
+
+- Customers in Monrovia, Liberia.
+- Women and men interested in beauty and personal care.
+- Customers looking for skincare products.
+- Customers looking for cosmetics and makeup.
+- Customers looking for body care.
+- Customers looking for hair care.
+- Customers looking for fragrances.
+- Customers looking for everyday essentials.
+- Customers discovering NOVALUXE through Instagram.
+- Customers discovering NOVALUXE through TikTok.
+- Existing customers who want to browse products and place orders.
+
+The website must provide an excellent experience for both new and returning customers.
+
+The mobile experience is particularly important.
+
+Many customers will access the website through Instagram and TikTok links using their smartphones.
+
+Ensure that the website is easy to use on mobile devices.
+
+---
+
+# 5. PRIMARY BUSINESS OBJECTIVES
+
+Develop a professional website that enables customers to:
+
+1. Discover NOVALUXE.
+2. Learn about the business.
+3. Explore products.
+4. Browse product categories.
+5. Preview product images.
+6. Read product descriptions.
+7. View product prices.
+8. Check product availability.
+9. Search for products.
+10. Filter products.
+11. Select product variations.
+12. Add products to a shopping cart.
+13. Adjust quantities.
+14. Review their shopping cart.
+15. Provide customer information.
+16. Select delivery or pickup options where supported.
+17. Submit an order.
+18. Receive an order reference.
+19. Contact NOVALUXE through WhatsApp.
+20. Follow NOVALUXE on Instagram and TikTok.
+21. View selected Instagram content on the homepage.
+22. Access business contact information.
+23. Browse the website without creating an account.
+
+The website must prioritize product discovery, customer convenience, and successful order submission.
+
+---
+
+# 6. BRAND IDENTITY AND VISUAL DIRECTION
+
+Develop a premium, modern, elegant, and commercially appealing beauty retail website.
+
+The website must reflect NOVALUXE's official logo and visual identity.
+
+It should communicate:
+
+- Elegance.
+- Beauty.
+- Confidence.
+- Quality-conscious retail.
+- Convenience.
+- Modern lifestyle.
+- Customer-focused service.
+
+The website must not look like a generic cosmetics template.
+
+Create a distinctive visual presentation that feels professionally designed.
+
+## Official visual direction
+
+Use the supplied NOVALUXE logo as the primary source of brand inspiration.
+
+### Primary colours
+
+Black.
+
+Deep charcoal.
+
+Purple.
+
+Violet.
+
+### Secondary colours
+
+Champagne gold.
+
+Warm ivory.
+
+Cream.
+
+White.
+
+Soft beige.
+
+### Colour application
+
+Use black and charcoal for selected brand sections, navigation, footer, and visual contrast.
+
+Use purple and violet for brand accents.
+
+Use champagne gold for selected highlights, icons, decorative elements, and premium accents.
+
+Use white, ivory, and cream for product displays and clean content sections.
+
+Do not apply gold or purple excessively.
+
+Maintain visual balance.
+
+The website must feel premium without becoming visually overwhelming.
+
+## Typography
+
+Use elegant and modern typography.
+
+Recommended combination:
+
+**Headings:** Playfair Display.
+
+**Body text:** DM Sans or Inter.
+
+Use consistent typography throughout the website.
+
+Ensure:
+
+- Clear heading hierarchy.
+- Readable product descriptions.
+- Appropriate font sizes.
+- Consistent spacing.
+- Responsive typography.
+- Excellent mobile readability.
+
+## Design principles
+
+- Clean layouts.
+- Strong visual hierarchy.
+- High-quality product imagery.
+- Spacious product cards.
+- Elegant navigation.
+- Consistent alignment.
+- Refined buttons.
+- Subtle animations.
+- Smooth transitions.
+- Responsive layouts.
+- Clear calls to action.
+- Accessible colour contrast.
+
+Avoid:
+
+- Excessive gradients.
+- Unnecessary animations.
+- Overcrowded sections.
+- Generic beauty templates.
+- Excessive pink.
+- Unnecessary decorative icons.
+- Confusing navigation.
+- Oversized text that dominates the page.
+- Low-quality product images.
+
+The final website should look like a professionally developed premium retail brand.
+
+---
+
+# 7. WEBSITE ARCHITECTURE
+
+Build a proper multi-page website.
+
+Each navigation item must lead to its own dedicated page.
+
+Do not build the website as one long page with navigation buttons that merely scroll to sections.
+
+Use a structured routing system.
+
+Recommended navigation:
+
+- Home.
+- About Us.
+- Shop.
+- Contact.
+
+Additional functional pages:
+
+- Product Details.
+- Shopping Cart.
+- Checkout.
+- Order Confirmation.
+- Privacy Policy.
+- Terms and Conditions.
+- Delivery and Returns Policy.
+- Admin Login.
+- Admin Dashboard.
+
+The navigation must work correctly.
+
+The website must not contain empty pages or broken links.
+
+Use a consistent header and footer across all customer-facing pages.
+
+---
+
+# 8. HOMEPAGE DEVELOPMENT
+
+The homepage is the most important customer-facing page.
+
+It must introduce NOVALUXE, establish the brand identity, showcase products, and encourage customers to shop.
+
+Build the homepage with the following sections.
+
+## A. Announcement bar
+
+Create a slim announcement bar at the top of the website.
+
+Use it for editable announcements such as:
+
+- Welcome to NOVALUXE.
+- New arrivals.
+- Special promotions.
+- Important business updates.
+
+The administrator must be able to edit or disable the announcement.
+
+Do not invent promotional offers.
+
+## B. Header and navigation
+
+Create an elegant header.
+
+Include:
+
+- Official NOVALUXE logo.
+- Home.
+- About Us.
+- Shop.
+- Contact.
+- Search icon.
+- Shopping cart icon.
+- Cart item count.
+
+The logo must link to the homepage.
+
+The Shop navigation must open the dedicated Shop page.
+
+The About Us navigation must open the dedicated About Us page.
+
+The Contact navigation must open the dedicated Contact page.
+
+The cart icon must open the shopping cart.
+
+The search icon must provide functional product search.
+
+On mobile, use a responsive navigation menu.
+
+Ensure the header does not obstruct the website content.
+
+## C. Hero section
+
+Create a bold, visually striking hero section.
+
+Use high-quality cosmetics, skincare, beauty, or everyday essentials imagery.
+
+The image should capture attention immediately.
+
+The design must reflect NOVALUXE's premium visual identity.
+
+Use the following initial headline:
+
+"Your Beauty. Your Essentials. Your NOVALUXE."
+
+Supporting text:
+
+"Discover beauty, personal care, and everyday essentials thoughtfully brought together for your lifestyle."
+
+Primary CTA:
+
+"Shop Now"
+
+Secondary CTA:
+
+"Discover NOVALUXE"
+
+The Shop Now button must lead to the Shop page.
+
+The Discover NOVALUXE button must lead to the About Us page.
+
+The hero image and text must be responsive.
+
+On mobile, ensure the headline remains readable and the CTA buttons are accessible.
+
+The hero image must not contain unrelated food, restaurant, or irrelevant retail imagery.
+
+The administrator must be able to update the hero image and text through the dashboard.
+
+## D. Featured categories
+
+Create a visually attractive category section.
+
+Include initial categories such as:
+
+- Skincare.
+- Makeup.
+- Body Care.
+- Hair Care.
+- Fragrances.
+- Personal Care.
+- Everyday Essentials.
+- New Arrivals.
+
+Each category should have:
+
+- Category name.
+- Category image.
+- Short description where appropriate.
+- View Category link.
+
+Clicking a category must open the Shop page with the corresponding filter applied.
+
+Categories must be loaded from Supabase.
+
+The administrator must be able to add, edit, reorder, and remove categories.
+
+Do not permanently hardcode category information into the frontend.
+
+## E. Featured products
+
+Create a premium product display section.
+
+Display a selection of products.
+
+Each product card must include:
+
+- Product image.
+- Product name.
+- Product category.
+- Product price.
+- Product availability.
+- View Details button.
+- Add to Cart button.
+
+Products must be retrieved from Supabase.
+
+The administrator must be able to control which products appear in this section.
+
+Use consistent product image dimensions and card layouts.
+
+## F. New arrivals
+
+Create a section showcasing newly added products.
+
+Use a clear heading such as:
+
+"New Arrivals"
+
+Products must be dynamically loaded from the database.
+
+The administrator must be able to mark products as new arrivals.
+
+Do not display fabricated product launch dates.
+
+## G. Best sellers
+
+Create a section showcasing selected popular products.
+
+Use a heading such as:
+
+"Customer Favourites"
+
+The administrator must be able to manually select products for this section.
+
+Do not fabricate sales figures or customer popularity statistics.
+
+## H. Promotional banner
+
+Create an editable promotional section.
+
+It may display:
+
+- Special offers.
+- Seasonal promotions.
+- Product highlights.
+- New collections.
+- Campaign announcements.
+
+The administrator must be able to:
+
+- Change the heading.
+- Change the description.
+- Change the image.
+- Change the CTA.
+- Enable or disable the section.
+
+Do not invent discounts or promotions.
+
+## I. Brand introduction
+
+Create a short brand introduction.
+
+Initial copy:
+
+"At NOVALUXE, beauty and everyday essentials come together in one convenient shopping experience. Explore a thoughtful selection of products designed to complement your beauty, personal care, and everyday lifestyle."
+
+Include a button:
+
+"Discover NOVALUXE"
+
+Link the button to the About Us page.
+
+Make the content editable.
+
+## J. Customer benefits
+
+Create a visually attractive section highlighting the customer experience.
+
+Potential editable benefits:
+
+- Convenient shopping.
+- Easy product discovery.
+- Customer support.
+- Product variety.
+- Convenient ordering.
+- Available delivery options.
+
+Only display benefits the business can support.
+
+Do not claim:
+
+- Free delivery.
+- Guaranteed delivery times.
+- Product authenticity guarantees.
+- Unverified warranties.
+- Unsupported product certifications.
+
+## K. Instagram homepage section
+
+Create a dedicated Instagram section on the homepage.
+
+Section heading:
+
+"Follow the NOVALUXE Experience"
+
+Supporting text:
+
+"Discover our latest beauty essentials, product highlights, and updates on Instagram."
+
+Instagram profile:
+
+https://www.instagram.com/sennel_bbm/
+
+Include:
+
+- Instagram icon.
+- Follow on Instagram button.
+- Responsive content grid.
+- Selected Instagram posts.
+- Clickable content that opens the original Instagram post.
+
+The Instagram section must be visually integrated into the homepage.
+
+Use an official Instagram integration where supported.
+
+If a live Instagram feed requires API access, credentials, or external services, implement the necessary integration structure.
+
+Do not pretend a manually uploaded image grid is a live Instagram feed.
+
+If live Instagram content is unavailable, use administrator-managed content.
+
+Provide a fallback so the homepage continues to function when Instagram content cannot be loaded.
+
+The administrator must be able to manage the displayed content.
+
+## L. TikTok homepage integration
+
+Create a TikTok promotional section where appropriate.
+
+TikTok profile:
+
+https://www.tiktok.com/@sennel_bbm
+
+Include:
+
+- TikTok icon.
+- Follow on TikTok button.
+- Selected video content where embedding is supported.
+- Responsive video display.
+
+Do not autoplay videos with sound.
+
+If video embedding is unavailable, provide a link to the official TikTok profile.
+
+## M. Newsletter or customer updates
+
+Create an optional customer updates section.
+
+Allow visitors to subscribe to business updates if a suitable subscription system is implemented.
+
+Do not collect customer email addresses without explaining their purpose.
+
+Do not create a nonfunctional newsletter form.
+
+If newsletter functionality is not implemented, omit the section until it can be properly supported.
+
+## N. Homepage footer
+
+Include:
+
+- NOVALUXE logo.
+- Short brand description.
+- Navigation links.
+- Instagram.
+- TikTok.
+- Email.
+- WhatsApp.
+- Contact numbers.
+- Business location.
+- Privacy Policy.
+- Terms and Conditions.
+- Delivery and Returns Policy.
+- Copyright.
+
+Use the official business information provided.
+
+Ensure all links work.
+
+---
+
+# 9. ABOUT US PAGE
+
+Create a dedicated About Us page.
+
+The page must communicate NOVALUXE's brand identity, business purpose, and customer experience.
+
+## Brand introduction
+
+Explain that NOVALUXE is a cosmetics, beauty, personal care, and everyday essentials retailer based in Monrovia, Liberia.
+
+## Our story
+
+Create an editable company story section.
+
+Do not invent the founder's biography, establishment date, personal background, or business history.
+
+Use a placeholder until the actual company story is provided.
+
+## Our mission
+
+Initial suggested copy:
+
+"To make beauty, personal care, and everyday essentials conveniently accessible through a thoughtful product selection and a customer-focused shopping experience."
+
+## Our vision
+
+Initial suggested copy:
+
+"To become a trusted and recognizable destination for beauty and everyday essentials, connecting customers with products that complement their lifestyles."
+
+## Our values
+
+Include:
+
+- Customer satisfaction.
+- Convenience.
+- Quality-conscious product selection.
+- Trust.
+- Continuous improvement.
+
+## Our location
+
+Display:
+
+GSA Road, Around the ELWA Roundabout.
+
+Monrovia, Liberia.
+
+Do not invent a street number.
+
+## CTA
+
+Include:
+
+"Explore Our Products"
+
+Link to the Shop page.
+
+Make the About Us content editable through the dashboard.
+
+---
+
+# 10. SHOP PAGE
+
+Create a dedicated Shop page.
+
+The page must display products from Supabase.
+
+## Product catalogue
+
+Each product must include:
+
+- Product ID.
+- Product name.
+- Product slug.
+- Product description.
+- Product category.
+- Product price.
+- Currency.
+- Product images.
+- Product SKU where applicable.
+- Stock quantity.
+- Availability.
+- Product variations.
+- Featured status.
+- New arrival status.
+- Best seller status.
+
+## Product categories
+
+Allow customers to browse products by category.
+
+Categories must be dynamically retrieved from Supabase.
+
+## Search
+
+Create functional product search.
+
+Customers should be able to search by:
+
+- Product name.
+- Category.
+- Product description.
+- Relevant keywords.
+
+Search must work correctly.
+
+## Filters
+
+Include:
+
+- Category.
+- Price range.
+- Availability.
+- New arrivals.
+- Featured products.
+
+## Sorting
+
+Include:
+
+- Newest.
+- Price low to high.
+- Price high to low.
+- Alphabetical order.
+
+## Product cards
+
+Each card must include:
+
+- Product image.
+- Product name.
+- Category.
+- Price.
+- Stock status.
+- View Details.
+- Add to Cart.
+
+Ensure consistent product image dimensions.
+
+## Product availability
+
+Display appropriate product availability.
+
+Examples:
+
+- In Stock.
+- Out of Stock.
+- Limited Availability, only if the business defines this status.
+
+Do not display inaccurate inventory.
+
+Do not allow customers to purchase unavailable products.
+
+## Product pagination
+
+Implement pagination or efficient product loading.
+
+Avoid loading the entire product catalogue unnecessarily.
+
+## Empty states
+
+If no products match a search or filter, display a helpful message.
+
+Do not leave a blank page.
+
+---
+
+# 11. PRODUCT DETAILS PAGE
+
+Create a dedicated product details page.
+
+Each product must have its own appropriate URL.
+
+Include:
+
+- Product image gallery.
+- Product name.
+- Product description.
+- Product category.
+- Product price.
+- Product availability.
+- Product variations.
+- Quantity selector.
+- Add to Cart button.
+- Related products.
+
+## Product variations
+
+Support variations where applicable.
+
+Examples:
+
+- Size.
+- Colour.
+- Fragrance.
+- Product type.
+
+Only display variations that exist for the selected product.
+
+The selected variation must be included in the cart and order.
+
+## Product image gallery
+
+Allow customers to view product images.
+
+Use appropriate image sizing.
+
+Provide alt text.
+
+Avoid unnecessary image stretching.
+
+## Related products
+
+Display relevant products from the same category where available.
+
+Load related products from Supabase.
+
+---
+
+# 12. SHOPPING CART
+
+Create a fully functional shopping cart.
+
+Customers must be able to:
+
+- Add products.
+- Remove products.
+- Increase quantities.
+- Decrease quantities.
+- Select product variations.
+- View product prices.
+- View subtotal.
+- View delivery fees.
+- View estimated total.
+
+The cart must update automatically.
+
+Display the cart item count in the header.
+
+Preserve cart contents during normal website navigation.
+
+Use appropriate client-side persistence.
+
+Do not trust frontend product prices.
+
+Validate prices and availability against Supabase before order submission.
+
+Prevent invalid quantities.
+
+Prevent ordering unavailable products.
+
+Ensure the cart works correctly on mobile.
+
+---
+
+# 13. CHECKOUT PAGE
+
+Create a dedicated checkout page.
+
+The checkout process must be simple, clear, and convenient.
+
+## Customer information
+
+Collect:
+
+- Full name.
+- Phone number.
+- Email address, optional.
+- City or area.
+- Delivery location.
+- Delivery address.
+- Delivery method.
+- Additional instructions.
+
+## Delivery methods
+
+Support:
+
+- Delivery.
+- Pickup, if available.
+
+Make delivery availability configurable.
+
+Do not invent delivery fees.
+
+Do not invent delivery times.
+
+The administrator must be able to manage delivery settings.
+
+## Order summary
+
+Display:
+
+- Product names.
+- Product variations.
+- Quantities.
+- Unit prices.
+- Subtotal.
+- Delivery fee.
+- Total amount.
+- Currency.
+
+## Order submission
+
+When the customer submits an order:
+
+1. Validate customer information.
+2. Validate the cart.
+3. Retrieve current product information from Supabase.
+4. Verify product availability.
+5. Verify product prices.
+6. Validate product variations.
+7. Calculate subtotal.
+8. Calculate delivery charges.
+9. Calculate final total.
+10. Create a unique order reference.
+11. Create the order record.
+12. Create order item records.
+13. Save customer information where appropriate.
+14. Display order confirmation.
+15. Provide WhatsApp contact functionality.
+
+Use a secure server-side process or suitable database transaction.
+
+Do not trust client-submitted prices.
+
+Do not mark orders as paid without confirmed payment.
+
+Do not mark orders as completed unless their actual status has been updated.
+
+---
+
+# 14. WHATSAPP ORDERING
+
+Use the official NOVALUXE WhatsApp number:
+
++1 (605) 941-3997
+
+International format:
+
++16059413997
+
+Create a functional WhatsApp contact button.
+
+The WhatsApp button must open the appropriate conversation.
+
+## WhatsApp order message
+
+Generate a structured order message containing:
+
+- NOVALUXE business name.
+- Order reference.
+- Customer name.
+- Customer phone.
+- Selected products.
+- Product variations.
+- Quantities.
+- Unit prices.
+- Subtotal.
+- Delivery fee.
+- Total.
+- Delivery location.
+- Delivery method.
+- Additional instructions.
+
+Encode the message correctly.
+
+Do not concatenate raw customer input into an unencoded URL.
+
+## Order process
+
+The order must be recorded in Supabase before opening WhatsApp.
+
+Display the order reference to the customer.
+
+Allow the customer to review the WhatsApp message.
+
+Do not claim that the WhatsApp message has been sent unless the customer completes that action.
+
+If WhatsApp cannot be opened, provide the order reference and appropriate contact information.
+
+Do not require WhatsApp to be installed if the customer can use WhatsApp Web or another supported access method.
+
+---
+
+# 15. CONTACT PAGE
+
+Create a dedicated Contact page.
+
+## Contact introduction
+
+"Have a question about our products or your order? Get in touch with NOVALUXE. We're happy to assist."
+
+## Business information
+
+Display:
+
+NOVALUXE by Sennel.
+
+Location:
+
+GSA Road, Around the ELWA Roundabout.
+
+Monrovia, Liberia.
+
+Email:
+
+sennelgroup@gmail.com
+
+WhatsApp:
+
++1 (605) 941-3997
+
+Contact numbers:
+
++231 88 851 8375
+
++231 88 611 7880
+
+## Contact form
+
+Include:
+
+- Full name.
+- Phone number.
+- Email.
+- Subject.
+- Message.
+
+Validate required fields.
+
+Display appropriate success and error messages.
+
+Store enquiries in Supabase.
+
+## Social media
+
+Include:
+
+Instagram:
+
+https://www.instagram.com/sennel_bbm/
+
+TikTok:
+
+https://www.tiktok.com/@sennel_bbm
+
+## Location
+
+Display the official business location.
+
+Do not invent the street address.
+
+If using a map, use a verified location.
+
+Do not place an unverified map pin.
+
+---
+
+# 16. ADMINISTRATIVE DASHBOARD
+
+Build a secure and functional administrative dashboard.
+
+The dashboard must allow authorized administrators to manage NOVALUXE's website without editing source code.
+
+## Admin access
+
+Include a discreet administrative icon.
+
+Use an appropriate dashboard, settings, or shield icon.
+
+Place the icon in the footer or another suitable location.
+
+Do not make the admin interface a prominent customer-facing navigation item.
+
+Clicking the icon must open the administrative login page.
+
+## Authentication
+
+Use Supabase Auth.
+
+Implement:
+
+- Secure administrator login.
+- Protected routes.
+- Role-based authorization.
+- Session handling.
+- Logout.
+- Appropriate access control.
+
+Do not hardcode administrator passwords.
+
+Do not expose privileged credentials in frontend code.
+
+Do not allow customers to assign themselves administrative roles.
+
+Create a secure initial administrator setup process.
+
+## Dashboard overview
+
+Display real database information.
+
+Include:
+
+- Total products.
+- Available products.
+- Out-of-stock products.
+- Total orders.
+- Pending orders.
+- Processing orders.
+- Completed orders.
+- Recent orders.
+- Recent enquiries.
+
+Do not fabricate business statistics.
+
+## Product management
+
+Allow administrators to:
+
+- Create products.
+- Edit products.
+- Delete products.
+- Upload images.
+- Update descriptions.
+- Update prices.
+- Update categories.
+- Update stock.
+- Manage variations.
+- Mark products as featured.
+- Mark products as new arrivals.
+- Mark products as best sellers.
+- Publish products.
+- Unpublish products.
+
+Changes must be saved to Supabase.
+
+## Category management
+
+Allow administrators to:
+
+- Create categories.
+- Edit categories.
+- Delete categories.
+- Upload category images.
+- Update descriptions.
+- Manage category visibility.
+- Reorder categories.
+
+## Order management
+
+Allow administrators to:
+
+- View orders.
+- Search orders.
+- Filter orders.
+- View customer information.
+- View order items.
+- View order totals.
+- View delivery information.
+- Update order status.
+- View payment status.
+- View order history.
+
+Order statuses:
+
+- Pending.
+- Confirmed.
+- Processing.
+- Ready for Pickup.
+- Out for Delivery.
+- Completed.
+- Cancelled.
+
+Use appropriate status transitions.
+
+Do not automatically mark orders as paid.
+
+## Customer management
+
+Allow authorized administrators to view customer information associated with orders.
+
+Include:
+
+- Customer name.
+- Phone number.
+- Email.
+- Delivery location.
+- Order history.
+
+Restrict access to authorized administrators.
+
+## Homepage management
+
+Allow administrators to manage:
+
+- Hero heading.
+- Hero description.
+- Hero image.
+- Homepage introduction.
+- Featured products.
+- New arrivals.
+- Best sellers.
+- Category display.
+- Promotional banners.
+- Instagram section.
+- TikTok section.
+- Customer benefits.
+- Footer content.
+
+## Social media management
+
+Allow administrators to manage:
+
+- Instagram profile URL.
+- TikTok profile URL.
+- Instagram content display.
+- TikTok content display.
+- Social media links.
+- Promotional content.
+
+## Business settings
+
+Allow administrators to manage:
+
+- Business name.
+- Business location.
+- Contact numbers.
+- WhatsApp number.
+- Email.
+- Currency.
+- Delivery fees.
+- Pickup availability.
+- Opening hours.
+- Social media URLs.
+
+## Image management
+
+Use Supabase Storage.
+
+Allow administrators to:
+
+- Upload product images.
+- Upload category images.
+- Upload homepage images.
+- Upload promotional images.
+- Preview images.
+- Replace images.
+- Delete images.
+
+Validate image types and file sizes.
+
+Do not store large images as base64 strings in database records.
+
+---
+
+# 17. SUPABASE DATABASE ARCHITECTURE
+
+Use Supabase as the primary backend.
+
+Create a structured database.
+
+Recommended tables:
+
+## products
+
+Fields:
+
+- id
+- name
+- slug
+- description
+- price
+- currency
+- category_id
+- sku
+- stock_quantity
+- is_available
+- is_featured
+- is_new_arrival
+- is_best_seller
+- created_at
+- updated_at
+
+## categories
+
+Fields:
+
+- id
+- name
+- slug
+- description
+- image_url
+- is_active
+- display_order
+- created_at
+
+## product_images
+
+Fields:
+
+- id
+- product_id
+- image_url
+- alt_text
+- display_order
+- created_at
+
+## product_variants
+
+Fields:
+
+- id
+- product_id
+- variant_name
+- variant_value
+- price_adjustment
+- stock_quantity
+- created_at
+
+## customers
+
+Fields:
+
+- id
+- full_name
+- phone
+- email
+- created_at
+
+## orders
+
+Fields:
+
+- id
+- order_reference
+- customer_id
+- customer_name
+- customer_phone
+- customer_email
+- delivery_location
+- delivery_address
+- delivery_method
+- delivery_fee
+- subtotal
+- total_amount
+- currency
+- order_status
+- payment_status
+- customer_notes
+- created_at
+- updated_at
+
+## order_items
+
+Fields:
+
+- id
+- order_id
+- product_id
+- product_name
+- selected_variant
+- quantity
+- unit_price
+- subtotal
+
+Store order item snapshots.
+
+Historical order information must remain accurate if a product is subsequently renamed or its price changes.
+
+## enquiries
+
+Fields:
+
+- id
+- full_name
+- phone
+- email
+- subject
+- message
+- status
+- created_at
+
+## site_settings
+
+Fields:
+
+- id
+- setting_key
+- setting_value
+- updated_at
+
+## admin_profiles
+
+Fields:
+
+- id
+- user_id
+- role
+- created_at
+
+Use UUIDs where appropriate.
+
+Create relationships, constraints, indexes, and timestamps.
+
+Use database migrations or a documented SQL setup process.
+
+Do not assume the tables already exist.
+
+---
+
+# 18. SECURITY AND DATA PROTECTION
+
+Security must be implemented from the beginning.
+
+Use:
+
+- Supabase Auth.
+- Row Level Security.
+- Role-based authorization.
+- Protected administrative routes.
+- Server-side validation.
+- Database constraints.
+- Secure environment variables.
+- Appropriate file upload restrictions.
+- Safe error handling.
+
+Public visitors should only access publicly available content.
+
+Customers must not access other customers' orders or personal information.
+
+Only authorized administrators should manage:
+
+- Products.
+- Categories.
+- Orders.
+- Customers.
+- Website settings.
+- Administrative users.
+
+Do not expose Supabase service-role keys in frontend code.
+
+Do not expose administrative credentials.
+
+Do not allow unauthorized role changes.
+
+Implement appropriate database permissions.
+
+Use secure order creation.
+
+Validate prices and stock server-side.
+
+Protect customer information.
+
+Avoid collecting unnecessary personal information.
+
+---
+
+# 19. TECHNOLOGY STACK
+
+Build the website using a modern and maintainable stack.
+
+Recommended:
+
+- React.
+- TypeScript.
+- Vite.
+- Tailwind CSS.
+- React Router.
+- Supabase.
+- Supabase Storage.
+- Supabase Auth.
+- Lucide icons.
+- Vercel.
+
+Use reusable components.
+
+Recommended project structure:
+
+- src

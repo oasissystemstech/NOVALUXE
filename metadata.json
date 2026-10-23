@@ -1,0 +1,6 @@
+{
+  "name": "NOVALUXE by Sennel - Cosmetics & Everyday Essentials",
+  "description": "Professional cosmetics, beauty products, skincare, personal care, and everyday essentials retail store based in Monrovia, Liberia.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

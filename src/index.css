@@ -1,0 +1,39 @@
+@import "tailwindcss";
+
+@layer base {
+  :root {
+    --font-serif: "Playfair Display", Georgia, serif;
+    --font-sans: "DM Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  }
+
+  body {
+    font-family: var(--font-sans);
+    background-color: #0c0a10;
+    color: #f5f2ea;
+  }
+
+  h1, h2, h3, .font-editorial {
+    font-family: var(--font-serif);
+  }
+}
+
+/* Custom NOVALUXE brand gradients and styling */
+.brand-gradient-text {
+  background: linear-gradient(135deg, #A855F7 0%, #C084FC 25%, #E9D5FF 45%, #FDE68A 70%, #EAB308 90%, #CA8A04 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.brand-gold-text {
+  background: linear-gradient(135deg, #FDE68A 0%, #EAB308 50%, #B45309 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.brand-purple-glow {
+  box-shadow: 0 0 30px -5px rgba(139, 92, 246, 0.25);
+}
+
+.brand-gold-glow {
+  box-shadow: 0 0 25px -5px rgba(234, 179, 8, 0.2);
+}
