@@ -122,23 +122,23 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
   }, [clearSession]);
 
-  const login = async (email: string, pass: string): Promise<{ success: boolean; error?: string }> => {
-    const trimmedEmail = email.trim();
-    if (!trimmedEmail || !pass) {
-      return { success: false, error: 'Please enter both email and password.' };
+  const login = async (identifierInput: string, pass: string): Promise<{ success: boolean; error?: string }> => {
+    const trimmed = identifierInput.trim();
+    if (!trimmed || !pass) {
+      return { success: false, error: 'Please enter both username/email and password.' };
     }
 
-    // 1. Try Supabase Auth first if configured
-    if (isSupabaseConfigured && supabase) {
+    // 1. Try Supabase Auth first if configured and user entered an email
+    if (isSupabaseConfigured && supabase && trimmed.includes('@')) {
       try {
         const { data, error } = await supabase.auth.signInWithPassword({
-          email: trimmedEmail,
+          email: trimmed,
           password: pass
         });
         if (!error && data?.user) {
           const user: AdminUser = {
             id: data.user.id,
-            email: data.user.email || trimmedEmail,
+            email: data.user.email || trimmed,
             role: 'admin'
           };
           setAdminUser(user);
@@ -160,7 +160,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-          email: trimmedEmail,
+          email: trimmed,
+          username: trimmed,
           password: pass
         })
       });
@@ -178,7 +179,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       return {
         success: false,
-        error: data.error || 'Invalid administrator email or password.'
+        error: data.error || 'Invalid administrator credentials.'
       };
     } catch {
       return {

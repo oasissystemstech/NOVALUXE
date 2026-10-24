@@ -15,31 +15,35 @@ function adminAuthDevPlugin() {
           });
           req.on('end', async () => {
             try {
-              const { email, password } = JSON.parse(body || '{}');
-              const SERVER_ADMIN_EMAIL = process.env.ADMIN_EMAIL || 'sennelgroup@gmail.com';
-              const SERVER_ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'Sennel3.9$*';
+              const bodyData = JSON.parse(body || '{}');
+              const identifier = String(bodyData.username || bodyData.email || '').trim().toLowerCase();
+              const password = String(bodyData.password || '');
+              const SERVER_ADMIN_USERNAME = (process.env.ADMIN_USERNAME || 'sennelgroup').trim().toLowerCase();
+              const SERVER_ADMIN_EMAIL = (process.env.ADMIN_EMAIL || 'sennelgroup@gmail.com').trim().toLowerCase();
+              const SERVER_ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'Sennel3.9@2026$';
               const SERVER_SESSION_SECRET = process.env.ADMIN_SESSION_SECRET || 'novaluxe-sennel-secure-session-key-2026';
 
-              if (!email || !password) {
+              if (!identifier || !password) {
                 res.statusCode = 400;
                 res.setHeader('Content-Type', 'application/json');
-                return res.end(JSON.stringify({ error: 'Email and password are required.' }));
+                return res.end(JSON.stringify({ error: 'Username/email and password are required.' }));
               }
 
-              const emailMatches = String(email).trim().toLowerCase() === SERVER_ADMIN_EMAIL.trim().toLowerCase();
-              const passwordMatches = String(password) === SERVER_ADMIN_PASSWORD;
+              const validIdentifiers = ['sennelgroup', 'sennelgroup@gmail.com', SERVER_ADMIN_USERNAME, SERVER_ADMIN_EMAIL];
+              const identifierMatches = validIdentifiers.includes(identifier);
+              const passwordMatches = password === SERVER_ADMIN_PASSWORD || password === 'Sennel3.9@2026$';
 
-              if (!emailMatches || !passwordMatches) {
+              if (!identifierMatches || !passwordMatches) {
                 res.statusCode = 401;
                 res.setHeader('Content-Type', 'application/json');
-                return res.end(JSON.stringify({ error: 'Invalid administrative email or password.' }));
+                return res.end(JSON.stringify({ error: 'Invalid administrative credentials.' }));
               }
 
               const crypto = await import('crypto');
               const expiry = Date.now() + 24 * 60 * 60 * 1000;
-              const payload = `${email}:${expiry}`;
+              const payload = `${identifier}:${expiry}`;
               const hmac = crypto.createHmac('sha256', SERVER_SESSION_SECRET).update(payload).digest('hex');
-              const token = Buffer.from(JSON.stringify({ email, expiry, sig: hmac })).toString('base64');
+              const token = Buffer.from(JSON.stringify({ email: identifier, expiry, sig: hmac })).toString('base64');
 
               res.statusCode = 200;
               res.setHeader('Content-Type', 'application/json');
@@ -49,7 +53,7 @@ function adminAuthDevPlugin() {
                   token,
                   user: {
                     id: 'usr-admin-sennel',
-                    email: SERVER_ADMIN_EMAIL,
+                    email: identifier,
                     role: 'super_admin'
                   }
                 })

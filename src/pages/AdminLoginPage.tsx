@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Shield, Lock, Mail, ArrowRight, AlertCircle, ArrowLeft } from 'lucide-react';
+import { Shield, Lock, User, ArrowRight, AlertCircle, ArrowLeft } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { NovaluxeLogo } from '../components/NovaluxeLogo';
 
@@ -13,7 +13,7 @@ export const AdminLoginPage: React.FC<AdminLoginPageProps> = ({
   onBackToStore
 }) => {
   const { login } = useAuth();
-  const [email, setEmail] = useState('');
+  const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -23,7 +23,7 @@ export const AdminLoginPage: React.FC<AdminLoginPageProps> = ({
     setError('');
     setLoading(true);
 
-    const result = await login(email, password);
+    const result = await login(identifier, password);
     setLoading(false);
 
     if (result.success) {
@@ -74,17 +74,19 @@ export const AdminLoginPage: React.FC<AdminLoginPageProps> = ({
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-1.5">
             <label className="text-xs font-medium text-[#C5B9D8]">
-              Admin Email
+              Admin Username or Email
             </label>
             <div className="relative">
-              <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-[#8C829B]" />
+              <User className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-[#8C829B]" />
               <input
-                type="email"
+                type="text"
                 required
-                value={email}
-                onChange={e => setEmail(e.target.value)}
-                placeholder="Enter your administrator email"
-                autoComplete="email"
+                value={identifier}
+                onChange={e => setIdentifier(e.target.value)}
+                placeholder="Enter your administrator username or email"
+                autoComplete="username"
+                autoCapitalize="none"
+                spellCheck={false}
                 className="w-full pl-10 pr-4 py-2.5 bg-[#1A1227] border border-[#34244C] rounded-xl text-xs text-[#F3EFEA] placeholder-[#6D5D82] focus:outline-none focus:border-[#A855F7] transition-colors"
               />
             </div>
