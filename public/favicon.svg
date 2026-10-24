@@ -1,0 +1,98 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="100%" height="100%">
+  <defs>
+    <!-- Background Gradient -->
+    <radialGradient id="bgGlow" cx="50%" cy="50%" r="70%" fx="50%" fy="40%">
+      <stop offset="0%" stop-color="#1A1329" />
+      <stop offset="60%" stop-color="#0E0A16" />
+      <stop offset="100%" stop-color="#07050A" />
+    </radialGradient>
+
+    <!-- Border Ring Gradient -->
+    <linearGradient id="borderGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FDE68A" stop-opacity="0.8" />
+      <stop offset="35%" stop-color="#D4AF37" stop-opacity="0.4" />
+      <stop offset="70%" stop-color="#A855F7" stop-opacity="0.4" />
+      <stop offset="100%" stop-color="#7C3AED" stop-opacity="0.7" />
+    </linearGradient>
+
+    <!-- Gold Facet Gradient (Top & Right) -->
+    <linearGradient id="goldFacetGrad" x1="20%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FFFFFF" />
+      <stop offset="25%" stop-color="#FFFBEB" />
+      <stop offset="50%" stop-color="#FDE68A" />
+      <stop offset="75%" stop-color="#EAB308" />
+      <stop offset="100%" stop-color="#B45309" />
+    </linearGradient>
+
+    <!-- Purple Facet Gradient (Bottom & Left) -->
+    <linearGradient id="purpleFacetGrad" x1="0%" y1="0%" x2="80%" y2="100%">
+      <stop offset="0%" stop-color="#E9D5FF" />
+      <stop offset="30%" stop-color="#C084FC" />
+      <stop offset="65%" stop-color="#9333EA" />
+      <stop offset="100%" stop-color="#581C87" />
+    </linearGradient>
+
+    <!-- Radiant Star Flare Gradient -->
+    <radialGradient id="centerFlare" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#FFFFFF" stop-opacity="1" />
+      <stop offset="40%" stop-color="#FDE68A" stop-opacity="0.8" />
+      <stop offset="70%" stop-color="#C084FC" stop-opacity="0.3" />
+      <stop offset="100%" stop-color="#7C3AED" stop-opacity="0" />
+    </radialGradient>
+
+    <!-- Ambient Aura -->
+    <radialGradient id="starAura" cx="50%" cy="50%" r="45%">
+      <stop offset="0%" stop-color="#A855F7" stop-opacity="0.35" />
+      <stop offset="60%" stop-color="#EAB308" stop-opacity="0.12" />
+      <stop offset="100%" stop-color="#000000" stop-opacity="0" />
+    </radialGradient>
+  </defs>
+
+  <!-- Base Dark Luxury Squircle Container -->
+  <rect x="16" y="16" width="480" height="480" rx="112" ry="112" fill="url(#bgGlow)" />
+  <rect x="16" y="16" width="480" height="480" rx="112" ry="112" fill="none" stroke="url(#borderGrad)" stroke-width="4.5" />
+
+  <!-- Ambient Glow Behind Star -->
+  <circle cx="256" cy="256" r="190" fill="url(#starAura)" />
+
+  <!-- 4-Point Star Facets -->
+  <!-- Left Side (Purple-dominated) -->
+  <path
+    d="M 256 72 C 256 180 180 256 72 256 C 180 256 256 332 256 440 Z"
+    fill="url(#purpleFacetGrad)"
+  />
+
+  <!-- Right Side (Gold-dominated) -->
+  <path
+    d="M 256 72 C 256 180 332 256 440 256 C 332 256 256 332 256 440 Z"
+    fill="url(#goldFacetGrad)"
+  />
+
+  <!-- High-precision inner specular highlight along vertical/horizontal spine -->
+  <line x1="256" y1="84" x2="256" y2="428" stroke="#FFFFFF" stroke-width="1.8" stroke-opacity="0.45" stroke-linecap="round" />
+  <line x1="84" y1="256" x2="428" y2="256" stroke="#FFFFFF" stroke-width="1.8" stroke-opacity="0.45" stroke-linecap="round" />
+
+  <!-- Secondary Mini Diamond Sparkle (Top-Right Accent) -->
+  <g transform="translate(372, 136)">
+    <path
+      d="M 0 -26 C 0 -6 6 0 26 0 C 6 0 0 6 0 26 C 0 6 -6 0 -26 0 C -6 0 0 -6 0 -26 Z"
+      fill="url(#goldFacetGrad)"
+      opacity="0.9"
+    />
+    <circle cx="0" cy="0" r="3.5" fill="#FFFFFF" />
+  </g>
+
+  <!-- Tertiary Mini Sparkle (Bottom-Left Delicate Accent) -->
+  <g transform="translate(138, 372)">
+    <path
+      d="M 0 -16 C 0 -4 4 0 16 0 C 4 0 0 4 0 16 C 0 4 -4 0 -16 0 C -4 0 0 -4 0 -16 Z"
+      fill="url(#purpleFacetGrad)"
+      opacity="0.75"
+    />
+    <circle cx="0" cy="0" r="2" fill="#FFFFFF" />
+  </g>
+
+  <!-- Radiant Center Core Glow -->
+  <circle cx="256" cy="256" r="32" fill="url(#centerFlare)" />
+  <circle cx="256" cy="256" r="7" fill="#FFFFFF" />
+</svg>
