@@ -14,6 +14,7 @@ import { useSettings } from '../context/SettingsContext';
 import { ProductCard } from '../components/ProductCard';
 import { TikTokIcon } from '../components/TikTokIcon';
 import { Product } from '../types';
+import { handleImageError, DEFAULT_HERO_IMAGE } from '../lib/imageUtils';
 interface HomePageProps {
   onNavigate: (path: string, param?: string) => void;
   onViewProduct: (product: Product) => void;
@@ -34,28 +35,28 @@ export const HomePage: React.FC<HomePageProps> = ({
     {
       id: 'ig-1',
       title: 'Luxury Perfume Notes & Scent Layering',
-      image: '/src/assets/images/category_fragrance_1792778553981.jpg',
+      image: '/images/categories/fragrances.jpg',
       likes: '412',
       tag: '#NOVALUXEBeauty'
     },
     {
       id: 'ig-2',
       title: 'Dewy Morning Skincare Essentials',
-      image: '/src/assets/images/category_skincare_1792778552269.jpg',
+      image: '/images/categories/skincare.jpg',
       likes: '589',
       tag: '#FloraHydration'
     },
     {
       id: 'ig-3',
       title: 'Velvet Lipsticks for Every Skin Tone',
-      image: '/src/assets/images/category_makeup_1792778553083.jpg',
+      image: '/images/categories/makeup.jpg',
       likes: '624',
       tag: '#LuxeLips'
     },
     {
       id: 'ig-4',
       title: 'Botanical Body Care Routine in Monrovia',
-      image: '/src/assets/images/category_bodycare_1792778553219.jpg',
+      image: '/images/categories/bodycare.jpg',
       likes: '348',
       tag: '#MonroviaGlow'
     }
@@ -72,6 +73,7 @@ export const HomePage: React.FC<HomePageProps> = ({
             alt="NOVALUXE Beauty & Essentials"
             className="w-full h-full object-cover object-center brightness-60"
             referrerPolicy="no-referrer"
+            onError={(e) => handleImageError(e, DEFAULT_HERO_IMAGE)}
           />
           <div className="absolute inset-0 bg-gradient-to-r from-[#0C0813] via-[#0C0813]/85 to-transparent" />
           <div className="absolute inset-0 bg-gradient-to-t from-[#0C0813] via-transparent to-black/30" />
@@ -155,6 +157,7 @@ export const HomePage: React.FC<HomePageProps> = ({
                 src={category.imageUrl}
                 alt={category.name}
                 referrerPolicy="no-referrer"
+                onError={handleImageError}
                 className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-108"
               />
               <div className="absolute inset-0 bg-gradient-to-t from-[#0C0813] via-[#0C0813]/40 to-transparent" />
@@ -391,6 +394,7 @@ export const HomePage: React.FC<HomePageProps> = ({
                 src={post.image}
                 alt={post.title}
                 referrerPolicy="no-referrer"
+                onError={handleImageError}
                 className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
               />
               <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex flex-col justify-between p-4">

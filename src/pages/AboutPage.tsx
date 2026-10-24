@@ -107,7 +107,7 @@ export const AboutPage: React.FC<AboutPageProps> = ({ onNavigateToShop }) => {
                     alt="Mercy Nuch Sennel Jolo, Founder & Chief Executive Officer of NOVALUXE by Sennel"
                     referrerPolicy="no-referrer"
                     onError={e => {
-                      (e.currentTarget as HTMLImageElement).src = '/assets/aistudio/NOVALUXE_CEO_ab7b33ed.jpeg';
+                      (e.currentTarget as HTMLImageElement).src = '/images/ceo/mercy_sennel_jolo_ceo.jpeg';
                     }}
                     className="w-full h-full object-cover object-top filter brightness-[1.01] contrast-[1.02]"
                   />

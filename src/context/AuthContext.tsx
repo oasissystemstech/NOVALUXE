@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 
 interface AdminUser {
@@ -12,85 +12,180 @@ interface AuthContextType {
   adminUser: AdminUser | null;
   login: (email: string, pass: string) => Promise<{ success: boolean; error?: string }>;
   logout: () => void;
-  demoLogin: () => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-const ADMIN_SESSION_KEY = 'novaluxe_admin_session_v1';
+const ADMIN_SESSION_USER_KEY = 'novaluxe_admin_user_session';
+const ADMIN_SESSION_TOKEN_KEY = 'novaluxe_admin_auth_token';
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [adminUser, setAdminUser] = useState<AdminUser | null>(() => {
     try {
-      const saved = sessionStorage.getItem(ADMIN_SESSION_KEY);
+      const saved = sessionStorage.getItem(ADMIN_SESSION_USER_KEY);
       return saved ? JSON.parse(saved) : null;
     } catch {
       return null;
     }
   });
 
-  useEffect(() => {
-    if (adminUser) {
-      sessionStorage.setItem(ADMIN_SESSION_KEY, JSON.stringify(adminUser));
-    } else {
-      sessionStorage.removeItem(ADMIN_SESSION_KEY);
-    }
-  }, [adminUser]);
+  const clearSession = useCallback(() => {
+    setAdminUser(null);
+    try {
+      sessionStorage.removeItem(ADMIN_SESSION_USER_KEY);
+      sessionStorage.removeItem(ADMIN_SESSION_TOKEN_KEY);
+    } catch {}
+  }, []);
 
-  const login = async (email: string, pass: string): Promise<{ success: boolean; error?: string }> => {
-    // 1. Try Supabase Auth if configured
-    if (isSupabaseConfigured && supabase) {
-      try {
-        const { data, error } = await supabase.auth.signInWithPassword({
-          email,
-          password: pass
-        });
-        if (error) {
-          return { success: false, error: error.message };
+  // Check and verify existing session on mount
+  useEffect(() => {
+    let isMounted = true;
+
+    async function verifyExistingSession() {
+      // 1. If Supabase is configured, check Supabase Auth session first
+      if (isSupabaseConfigured && supabase) {
+        try {
+          const { data } = await supabase.auth.getSession();
+          if (data.session?.user && isMounted) {
+            setAdminUser({
+              id: data.session.user.id,
+              email: data.session.user.email || 'administrator',
+              role: 'admin'
+            });
+            return;
+          }
+        } catch {
+          // Continue to token verification
         }
-        if (data.user) {
-          const user: AdminUser = {
-            id: data.user.id,
-            email: data.user.email || email,
-            role: 'admin'
-          };
-          setAdminUser(user);
-          return { success: true };
+      }
+
+      // 2. Check backend session token
+      const token = sessionStorage.getItem(ADMIN_SESSION_TOKEN_KEY);
+      if (token && isMounted) {
+        try {
+          const res = await fetch('/api/admin/verify', {
+            method: 'GET',
+            headers: {
+              Authorization: `Bearer ${token}`
+            }
+          });
+          if (res.ok) {
+            const data = await res.json();
+            if (data.valid && data.user && isMounted) {
+              setAdminUser(data.user);
+              sessionStorage.setItem(ADMIN_SESSION_USER_KEY, JSON.stringify(data.user));
+              return;
+            }
+          }
+          // If token verification returned 401 or invalid, clear invalid session
+          if (isMounted) {
+            clearSession();
+          }
+        } catch {
+          // If network error, preserve existing session if present, but do not throw
         }
-      } catch (err: any) {
-        return { success: false, error: err.message || 'Authentication error' };
       }
     }
 
-    // 2. Official Administrative Portal Credentials for NOVALUXE
-    // Email: sennelgroup@gmail.com
-    // Password: Sennel3.9$*
-    const validEmails = ['sennelgroup@gmail.com', 'admin@novaluxe.lr', 'admin'];
-    const validPasswords = ['Sennel3.9$*', 'Novaluxe2026!'];
+    verifyExistingSession();
 
-    if (
-      (validEmails.includes(email.toLowerCase().trim()) || email.trim() === 'admin') &&
-      validPasswords.includes(pass)
-    ) {
-      const user: AdminUser = {
-        id: 'usr-admin-sennel',
-        email: email.includes('@') ? email : 'sennelgroup@gmail.com',
-        role: 'super_admin'
+    // Listen to Supabase auth state changes if configured
+    if (isSupabaseConfigured && supabase) {
+      const {
+        data: { subscription }
+      } = supabase.auth.onAuthStateChange((_event, session) => {
+        if (!isMounted) return;
+        if (session?.user) {
+          const user: AdminUser = {
+            id: session.user.id,
+            email: session.user.email || 'administrator',
+            role: 'admin'
+          };
+          setAdminUser(user);
+          try {
+            sessionStorage.setItem(ADMIN_SESSION_USER_KEY, JSON.stringify(user));
+          } catch {}
+        } else if (!sessionStorage.getItem(ADMIN_SESSION_TOKEN_KEY)) {
+          // No Supabase session and no backend token
+          setAdminUser(null);
+        }
+      });
+
+      return () => {
+        isMounted = false;
+        subscription.unsubscribe();
       };
-      setAdminUser(user);
-      return { success: true };
     }
 
-    return { success: false, error: 'Invalid administrative email or password.' };
-  };
-
-  const demoLogin = () => {
-    const user: AdminUser = {
-      id: 'usr-admin-sennel',
-      email: 'sennelgroup@gmail.com',
-      role: 'super_admin'
+    return () => {
+      isMounted = false;
     };
-    setAdminUser(user);
+  }, [clearSession]);
+
+  const login = async (email: string, pass: string): Promise<{ success: boolean; error?: string }> => {
+    const trimmedEmail = email.trim();
+    if (!trimmedEmail || !pass) {
+      return { success: false, error: 'Please enter both email and password.' };
+    }
+
+    // 1. Try Supabase Auth first if configured
+    if (isSupabaseConfigured && supabase) {
+      try {
+        const { data, error } = await supabase.auth.signInWithPassword({
+          email: trimmedEmail,
+          password: pass
+        });
+        if (!error && data?.user) {
+          const user: AdminUser = {
+            id: data.user.id,
+            email: data.user.email || trimmedEmail,
+            role: 'admin'
+          };
+          setAdminUser(user);
+          try {
+            sessionStorage.setItem(ADMIN_SESSION_USER_KEY, JSON.stringify(user));
+          } catch {}
+          return { success: true };
+        }
+      } catch {
+        // Fall back to serverless admin auth endpoint
+      }
+    }
+
+    // 2. Authenticate through secure backend API route
+    try {
+      const res = await fetch('/api/admin/login', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          email: trimmedEmail,
+          password: pass
+        })
+      });
+
+      const data = await res.json().catch(() => ({}));
+
+      if (res.ok && data.success && data.token && data.user) {
+        setAdminUser(data.user);
+        try {
+          sessionStorage.setItem(ADMIN_SESSION_USER_KEY, JSON.stringify(data.user));
+          sessionStorage.setItem(ADMIN_SESSION_TOKEN_KEY, data.token);
+        } catch {}
+        return { success: true };
+      }
+
+      return {
+        success: false,
+        error: data.error || 'Invalid administrator email or password.'
+      };
+    } catch {
+      return {
+        success: false,
+        error: 'Unable to connect to authentication server. Please check your network and try again.'
+      };
+    }
   };
 
   const logout = async () => {
@@ -99,8 +194,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         await supabase.auth.signOut();
       } catch {}
     }
-    setAdminUser(null);
-    sessionStorage.removeItem(ADMIN_SESSION_KEY);
+    clearSession();
   };
 
   return (
@@ -109,8 +203,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         isAdmin: Boolean(adminUser),
         adminUser,
         login,
-        logout,
-        demoLogin
+        logout
       }}
     >
       {children}

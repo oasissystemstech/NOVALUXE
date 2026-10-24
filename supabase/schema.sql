@@ -272,3 +272,22 @@ create policy "Allow update to product-images" on storage.objects
 create policy "Allow delete from product-images" on storage.objects
   for delete using (bucket_id = 'product-images');
 
+-- 19. SUPABASE STORAGE BUCKET FOR CATEGORY IMAGES
+-- Creates 'category-images' bucket for uploading and hosting category banner/card images
+insert into storage.buckets (id, name, public)
+values ('category-images', 'category-images', true)
+on conflict (id) do update set public = true;
+
+create policy "Public Access to category-images" on storage.objects
+  for select using (bucket_id = 'category-images');
+
+create policy "Allow upload to category-images" on storage.objects
+  for insert with check (bucket_id = 'category-images');
+
+create policy "Allow update to category-images" on storage.objects
+  for update with check (bucket_id = 'category-images');
+
+create policy "Allow delete from category-images" on storage.objects
+  for delete using (bucket_id = 'category-images');
+
+

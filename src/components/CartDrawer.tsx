@@ -2,6 +2,7 @@ import React from 'react';
 import { X, Trash2, Plus, Minus, ShoppingBag, ArrowRight } from 'lucide-react';
 import { useCart } from '../context/CartContext';
 import { useSettings } from '../context/SettingsContext';
+import { handleImageError } from '../lib/imageUtils';
 
 interface CartDrawerProps {
   onNavigateToCart: () => void;
@@ -73,6 +74,7 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
                         src={item.product.images[0]}
                         alt={item.product.name}
                         referrerPolicy="no-referrer"
+                        onError={handleImageError}
                         className="w-full h-full object-cover"
                       />
                     </div>

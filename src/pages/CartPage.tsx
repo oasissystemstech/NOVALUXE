@@ -2,6 +2,7 @@ import React from 'react';
 import { Trash2, Plus, Minus, ArrowRight, ShoppingBag, ArrowLeft } from 'lucide-react';
 import { useCart } from '../context/CartContext';
 import { useSettings } from '../context/SettingsContext';
+import { handleImageError } from '../lib/imageUtils';
 
 interface CartPageProps {
   onNavigateToShop: () => void;
@@ -81,6 +82,7 @@ export const CartPage: React.FC<CartPageProps> = ({
                         src={item.product.images[0]}
                         alt={item.product.name}
                         referrerPolicy="no-referrer"
+                        onError={handleImageError}
                         className="w-full h-full object-cover"
                       />
                     </div>

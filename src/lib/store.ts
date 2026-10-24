@@ -1,5 +1,6 @@
 import { Category, Product, Order, Enquiry, SiteSettings, Customer } from '../types';
 import { supabase } from './supabase';
+import { normalizeImageUrl } from './imageUtils';
 
 export const INITIAL_SETTINGS: SiteSettings = {
   businessName: 'NOVALUXE by Sennel',
@@ -16,7 +17,7 @@ export const INITIAL_SETTINGS: SiteSettings = {
   announcementEnabled: true,
   heroHeadline: 'Your Beauty. Your Essentials. Your NOVALUXE.',
   heroSubtitle: 'Discover beauty, personal care, and everyday essentials thoughtfully brought together for your lifestyle.',
-  heroImage: '/src/assets/images/hero_beauty_cosmetics_1792778552190.jpg',
+  heroImage: '/images/hero/hero_beauty_cosmetics.jpg',
   instagramUrl: 'https://www.instagram.com/sennel_bbm/',
   tiktokUrl: 'https://www.tiktok.com/@sennel_bbm',
   brandIntro:
@@ -35,7 +36,7 @@ export const INITIAL_CATEGORIES: Category[] = [
     name: 'Skincare',
     slug: 'skincare',
     description: 'Nourishing cleansers, serums, hydrating creams, and skin elixirs.',
-    imageUrl: '/src/assets/images/category_skincare_1792778552269.jpg',
+    imageUrl: '/images/categories/skincare.jpg',
     isActive: true,
     displayOrder: 1,
     createdAt: '2026-01-01T00:00:00Z'
@@ -45,7 +46,7 @@ export const INITIAL_CATEGORIES: Category[] = [
     name: 'Makeup',
     slug: 'makeup',
     description: 'Satin lipsticks, luminous compacts, and vibrant cosmetic palettes.',
-    imageUrl: '/src/assets/images/category_makeup_1792778553083.jpg',
+    imageUrl: '/images/categories/makeup.jpg',
     isActive: true,
     displayOrder: 2,
     createdAt: '2026-01-01T00:00:00Z'
@@ -55,7 +56,7 @@ export const INITIAL_CATEGORIES: Category[] = [
     name: 'Fragrances',
     slug: 'fragrances',
     description: 'Captivating eau de parfums and signature scents crafted for lasting presence.',
-    imageUrl: '/src/assets/images/category_fragrance_1792778553981.jpg',
+    imageUrl: '/images/categories/fragrances.jpg',
     isActive: true,
     displayOrder: 3,
     createdAt: '2026-01-01T00:00:00Z'
@@ -65,7 +66,7 @@ export const INITIAL_CATEGORIES: Category[] = [
     name: 'Body Care',
     slug: 'body-care',
     description: 'Ultra-rich botanical butters, nourishing oils, and silky body polishers.',
-    imageUrl: '/src/assets/images/category_bodycare_1792778553219.jpg',
+    imageUrl: '/images/categories/bodycare.jpg',
     isActive: true,
     displayOrder: 4,
     createdAt: '2026-01-01T00:00:00Z'
@@ -75,7 +76,7 @@ export const INITIAL_CATEGORIES: Category[] = [
     name: 'Hair Care',
     slug: 'hair-care',
     description: 'Moisture treatments, botanical scalp elixirs, and restorative oils.',
-    imageUrl: '/src/assets/images/category_skincare_1792778552269.jpg',
+    imageUrl: '/images/categories/bodycare.jpg',
     isActive: true,
     displayOrder: 5,
     createdAt: '2026-01-01T00:00:00Z'
@@ -85,7 +86,7 @@ export const INITIAL_CATEGORIES: Category[] = [
     name: 'Personal Care',
     slug: 'personal-care',
     description: 'Gentle daily cleansers, body washes, and refreshing hygiene essentials.',
-    imageUrl: '/src/assets/images/category_bodycare_1792778553219.jpg',
+    imageUrl: '/images/categories/bodycare.jpg',
     isActive: true,
     displayOrder: 6,
     createdAt: '2026-01-01T00:00:00Z'
@@ -95,7 +96,7 @@ export const INITIAL_CATEGORIES: Category[] = [
     name: 'Everyday Essentials',
     slug: 'everyday-essentials',
     description: 'Thoughtfully selected wellness, beauty tools, and daily staples.',
-    imageUrl: '/src/assets/images/hero_beauty_cosmetics_1792778552190.jpg',
+    imageUrl: '/images/hero/hero_beauty_cosmetics.jpg',
     isActive: true,
     displayOrder: 7,
     createdAt: '2026-01-01T00:00:00Z'
@@ -118,7 +119,7 @@ export const INITIAL_PRODUCTS: Product[] = [
     isFeatured: true,
     isNewArrival: false,
     isBestSeller: true,
-    images: ['/src/assets/images/hero_beauty_cosmetics_1792778552190.jpg'],
+    images: ['/images/products/avalon_eclat.jpg'],
     variants: [
       { id: 'v1', productId: 'prod-avalon-eclat', variantName: 'Size', variantValue: '50ml EDP', priceAdjustment: 0, stockQuantity: 10 },
       { id: 'v2', productId: 'prod-avalon-eclat', variantName: 'Size', variantValue: '100ml EDP', priceAdjustment: 25, stockQuantity: 8 }
@@ -141,7 +142,7 @@ export const INITIAL_PRODUCTS: Product[] = [
     isFeatured: true,
     isNewArrival: true,
     isBestSeller: true,
-    images: ['/src/assets/images/category_skincare_1792778552269.jpg'],
+    images: ['/images/products/flora_serum.jpg'],
     variants: [
       { id: 'v3', productId: 'prod-flora-serum', variantName: 'Size', variantValue: '30ml Dropper', priceAdjustment: 0, stockQuantity: 15 },
       { id: 'v4', productId: 'prod-flora-serum', variantName: 'Size', variantValue: '50ml Deluxe', priceAdjustment: 14, stockQuantity: 9 }
@@ -164,7 +165,7 @@ export const INITIAL_PRODUCTS: Product[] = [
     isFeatured: true,
     isNewArrival: false,
     isBestSeller: true,
-    images: ['/src/assets/images/category_skincare_1792778552269.jpg'],
+    images: ['/images/products/flora_cream.jpg'],
     createdAt: '2026-01-15T09:00:00Z',
     updatedAt: '2026-01-15T09:00:00Z'
   },
@@ -183,7 +184,7 @@ export const INITIAL_PRODUCTS: Product[] = [
     isFeatured: true,
     isNewArrival: true,
     isBestSeller: false,
-    images: ['/src/assets/images/category_makeup_1792778553083.jpg'],
+    images: ['/images/products/luxe_lipstick.jpg'],
     variants: [
       { id: 'v5', productId: 'prod-luxe-lipstick', variantName: 'Shade', variantValue: 'Deep Berry Velvet', priceAdjustment: 0, stockQuantity: 14 },
       { id: 'v6', productId: 'prod-luxe-lipstick', variantName: 'Shade', variantValue: 'Warm Spiced Nude', priceAdjustment: 0, stockQuantity: 16 },
@@ -207,7 +208,7 @@ export const INITIAL_PRODUCTS: Product[] = [
     isFeatured: true,
     isNewArrival: false,
     isBestSeller: true,
-    images: ['/src/assets/images/category_makeup_1792778553083.jpg'],
+    images: ['/images/products/rosegold_palette.jpg'],
     createdAt: '2026-01-20T14:30:00Z',
     updatedAt: '2026-01-20T14:30:00Z'
   },
@@ -226,7 +227,7 @@ export const INITIAL_PRODUCTS: Product[] = [
     isFeatured: true,
     isNewArrival: true,
     isBestSeller: false,
-    images: ['/src/assets/images/category_fragrance_1792778553981.jpg'],
+    images: ['/images/products/aura_eclipse.jpg'],
     variants: [
       { id: 'v8', productId: 'prod-aura-eclipse', variantName: 'Size', variantValue: '100ml Decanter', priceAdjustment: 0, stockQuantity: 12 }
     ],
@@ -248,7 +249,7 @@ export const INITIAL_PRODUCTS: Product[] = [
     isFeatured: false,
     isNewArrival: true,
     isBestSeller: true,
-    images: ['/src/assets/images/category_bodycare_1792778553219.jpg'],
+    images: ['/images/products/botanical_body_oil.jpg'],
     variants: [
       { id: 'v9', productId: 'prod-botanical-body-oil', variantName: 'Size', variantValue: '200ml Glass Pump', priceAdjustment: 0, stockQuantity: 28 }
     ],
@@ -270,7 +271,7 @@ export const INITIAL_PRODUCTS: Product[] = [
     isFeatured: true,
     isNewArrival: false,
     isBestSeller: true,
-    images: ['/src/assets/images/category_bodycare_1792778553219.jpg'],
+    images: ['/images/products/plant_petal_butter.jpg'],
     createdAt: '2026-01-25T11:00:00Z',
     updatedAt: '2026-01-25T11:00:00Z'
   },
@@ -289,7 +290,7 @@ export const INITIAL_PRODUCTS: Product[] = [
     isFeatured: false,
     isNewArrival: false,
     isBestSeller: false,
-    images: ['/src/assets/images/category_makeup_1792778553083.jpg'],
+    images: ['/images/products/luminous_compact.jpg'],
     createdAt: '2026-01-18T13:00:00Z',
     updatedAt: '2026-01-18T13:00:00Z'
   },
@@ -308,7 +309,7 @@ export const INITIAL_PRODUCTS: Product[] = [
     isFeatured: false,
     isNewArrival: true,
     isBestSeller: false,
-    images: ['/src/assets/images/category_bodycare_1792778553219.jpg'],
+    images: ['/images/products/herbal_hair_oil.jpg'],
     createdAt: '2026-02-18T16:00:00Z',
     updatedAt: '2026-02-18T16:00:00Z'
   },
@@ -327,7 +328,7 @@ export const INITIAL_PRODUCTS: Product[] = [
     isFeatured: false,
     isNewArrival: false,
     isBestSeller: false,
-    images: ['/src/assets/images/category_skincare_1792778552269.jpg'],
+    images: ['/images/products/gentle_cleanser.jpg'],
     createdAt: '2026-01-10T10:00:00Z',
     updatedAt: '2026-01-10T10:00:00Z'
   },
@@ -346,7 +347,7 @@ export const INITIAL_PRODUCTS: Product[] = [
     isFeatured: false,
     isNewArrival: false,
     isBestSeller: true,
-    images: ['/src/assets/images/hero_beauty_cosmetics_1792778552190.jpg'],
+    images: ['/images/products/hydrating_mist.jpg'],
     createdAt: '2026-01-08T09:00:00Z',
     updatedAt: '2026-01-08T09:00:00Z'
   }
@@ -379,7 +380,7 @@ export const INITIAL_ORDERS: Order[] = [
         quantity: 1,
         unitPrice: 65.0,
         subtotal: 65.0,
-        imageUrl: '/src/assets/images/hero_beauty_cosmetics_1792778552190.jpg'
+        imageUrl: '/images/products/avalon_eclat.jpg'
       },
       {
         id: 'item-2',
@@ -390,7 +391,7 @@ export const INITIAL_ORDERS: Order[] = [
         quantity: 1,
         unitPrice: 34.0,
         subtotal: 34.0,
-        imageUrl: '/src/assets/images/category_skincare_1792778552269.jpg'
+        imageUrl: '/images/products/flora_serum.jpg'
       }
     ],
     createdAt: '2026-03-02T14:20:00Z',
@@ -420,7 +421,7 @@ export const INITIAL_ORDERS: Order[] = [
         quantity: 1,
         unitPrice: 28.0,
         subtotal: 28.0,
-        imageUrl: '/src/assets/images/category_skincare_1792778552269.jpg'
+        imageUrl: '/images/products/flora_cream.jpg'
       },
       {
         id: 'item-4',
@@ -430,7 +431,7 @@ export const INITIAL_ORDERS: Order[] = [
         quantity: 1,
         unitPrice: 22.0,
         subtotal: 22.0,
-        imageUrl: '/src/assets/images/category_bodycare_1792778553219.jpg'
+        imageUrl: '/images/products/plant_petal_butter.jpg'
       }
     ],
     createdAt: '2026-03-03T09:45:00Z',
@@ -480,7 +481,11 @@ class StoreRepository {
 
   // Settings
   getSettings(): SiteSettings {
-    return this.get<SiteSettings>(STORAGE_KEYS.SETTINGS, INITIAL_SETTINGS);
+    const raw = this.get<SiteSettings>(STORAGE_KEYS.SETTINGS, INITIAL_SETTINGS);
+    return {
+      ...raw,
+      heroImage: normalizeImageUrl(raw.heroImage, '/images/hero/hero_beauty_cosmetics.jpg')
+    };
   }
 
   updateSettings(settings: Partial<SiteSettings>): SiteSettings {
@@ -492,7 +497,11 @@ class StoreRepository {
 
   // Categories
   getCategories(): Category[] {
-    return this.get<Category[]>(STORAGE_KEYS.CATEGORIES, INITIAL_CATEGORIES);
+    const raw = this.get<Category[]>(STORAGE_KEYS.CATEGORIES, INITIAL_CATEGORIES);
+    return raw.map(c => ({
+      ...c,
+      imageUrl: normalizeImageUrl(c.imageUrl, '/images/categories/skincare.jpg')
+    }));
   }
 
   saveCategory(cat: Category): Category {
@@ -504,6 +513,30 @@ class StoreRepository {
       list.push(cat);
     }
     this.set(STORAGE_KEYS.CATEGORIES, list);
+
+    // Sync to Supabase categories table if supabase is configured
+    if (supabase) {
+      Promise.resolve(
+        supabase
+          .from('categories')
+          .upsert(
+            {
+              name: cat.name,
+              slug: cat.slug,
+              description: cat.description,
+              image_url: cat.imageUrl,
+              is_active: cat.isActive,
+              display_order: cat.displayOrder
+            },
+            { onConflict: 'slug' }
+          )
+      )
+        .then(({ error }: any) => {
+          if (error) console.info('Supabase category sync note:', error.message);
+        })
+        .catch(() => {});
+    }
+
     return cat;
   }
 
@@ -514,7 +547,13 @@ class StoreRepository {
 
   // Products
   getProducts(): Product[] {
-    return this.get<Product[]>(STORAGE_KEYS.PRODUCTS, INITIAL_PRODUCTS);
+    const raw = this.get<Product[]>(STORAGE_KEYS.PRODUCTS, INITIAL_PRODUCTS);
+    return raw.map(p => ({
+      ...p,
+      images: p.images && p.images.length > 0
+        ? p.images.map(img => normalizeImageUrl(img, '/images/products/avalon_eclat.jpg'))
+        : ['/images/products/avalon_eclat.jpg']
+    }));
   }
 
   getProductById(id: string): Product | undefined {
@@ -546,7 +585,14 @@ class StoreRepository {
 
   // Orders
   getOrders(): Order[] {
-    return this.get<Order[]>(STORAGE_KEYS.ORDERS, INITIAL_ORDERS);
+    const raw = this.get<Order[]>(STORAGE_KEYS.ORDERS, INITIAL_ORDERS);
+    return raw.map(o => ({
+      ...o,
+      items: o.items.map(item => ({
+        ...item,
+        imageUrl: item.imageUrl ? normalizeImageUrl(item.imageUrl, '/images/products/avalon_eclat.jpg') : undefined
+      }))
+    }));
   }
 
   getOrder(refOrId: string): Order | undefined {

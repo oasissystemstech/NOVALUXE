@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import { Order } from '../types';
 import { useSettings } from '../context/SettingsContext';
+import { handleImageError } from '../lib/imageUtils';
 
 interface OrderConfirmationPageProps {
   order: Order;
@@ -153,6 +154,7 @@ _Sent via NOVALUXE Official Website_`;
                       src={item.imageUrl}
                       alt={item.productName}
                       referrerPolicy="no-referrer"
+                      onError={handleImageError}
                       className="w-full h-full object-cover"
                     />
                   </div>

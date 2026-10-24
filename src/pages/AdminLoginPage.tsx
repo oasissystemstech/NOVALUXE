@@ -12,7 +12,7 @@ export const AdminLoginPage: React.FC<AdminLoginPageProps> = ({
   onSuccess,
   onBackToStore
 }) => {
-  const { login, demoLogin } = useAuth();
+  const { login } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -31,11 +31,6 @@ export const AdminLoginPage: React.FC<AdminLoginPageProps> = ({
     } else {
       setError(result.error || 'Authentication failed. Please verify credentials.');
     }
-  };
-
-  const handleDemoAccess = () => {
-    demoLogin();
-    onSuccess();
   };
 
   return (
@@ -84,12 +79,13 @@ export const AdminLoginPage: React.FC<AdminLoginPageProps> = ({
             <div className="relative">
               <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-[#8C829B]" />
               <input
-                type="text"
+                type="email"
                 required
                 value={email}
                 onChange={e => setEmail(e.target.value)}
-                placeholder="sennelgroup@gmail.com"
-                className="w-full pl-10 pr-4 py-2.5 bg-[#1A1227] border border-[#34244C] rounded-xl text-xs text-[#F3EFEA] focus:outline-none focus:border-[#A855F7]"
+                placeholder="Enter your administrator email"
+                autoComplete="email"
+                className="w-full pl-10 pr-4 py-2.5 bg-[#1A1227] border border-[#34244C] rounded-xl text-xs text-[#F3EFEA] placeholder-[#6D5D82] focus:outline-none focus:border-[#A855F7] transition-colors"
               />
             </div>
           </div>
@@ -105,8 +101,9 @@ export const AdminLoginPage: React.FC<AdminLoginPageProps> = ({
                 required
                 value={password}
                 onChange={e => setPassword(e.target.value)}
-                placeholder="••••••••••••"
-                className="w-full pl-10 pr-4 py-2.5 bg-[#1A1227] border border-[#34244C] rounded-xl text-xs text-[#F3EFEA] focus:outline-none focus:border-[#A855F7]"
+                placeholder="Enter your password"
+                autoComplete="current-password"
+                className="w-full pl-10 pr-4 py-2.5 bg-[#1A1227] border border-[#34244C] rounded-xl text-xs text-[#F3EFEA] placeholder-[#6D5D82] focus:outline-none focus:border-[#A855F7] transition-colors"
               />
             </div>
           </div>
@@ -120,21 +117,6 @@ export const AdminLoginPage: React.FC<AdminLoginPageProps> = ({
             <ArrowRight className="w-4 h-4" />
           </button>
         </form>
-
-        {/* Credentials Reminder */}
-        <div className="pt-4 border-t border-[#261B36] space-y-3">
-          <p className="text-[11px] text-[#8C829B] text-center">
-            Configured login: <span className="text-[#E2D4B7] font-mono">sennelgroup@gmail.com</span> / <span className="text-[#E2D4B7] font-mono">Sennel3.9$*</span>
-          </p>
-          <button
-            type="button"
-            onClick={handleDemoAccess}
-            className="w-full py-2.5 rounded-xl bg-[#1A1227] hover:bg-[#251A38] text-[#F5D061] border border-[#34244C] text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
-          >
-            <Shield className="w-3.5 h-3.5" />
-            <span>Instant One-Click Admin Access</span>
-          </button>
-        </div>
       </div>
     </div>
   );

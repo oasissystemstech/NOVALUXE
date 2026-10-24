@@ -15,6 +15,7 @@ import { Product, ProductVariant } from '../types';
 import { useSettings } from '../context/SettingsContext';
 import { useCart } from '../context/CartContext';
 import { ProductCard } from '../components/ProductCard';
+import { handleImageError } from '../lib/imageUtils';
 
 interface ProductDetailPageProps {
   product: Product;
@@ -96,6 +97,7 @@ export const ProductDetailPage: React.FC<ProductDetailPageProps> = ({
               src={product.images[activeImageIdx] || product.images[0]}
               alt={product.name}
               referrerPolicy="no-referrer"
+              onError={handleImageError}
               className="w-full h-full object-cover"
             />
             {product.isNewArrival && (
@@ -122,6 +124,7 @@ export const ProductDetailPage: React.FC<ProductDetailPageProps> = ({
                     src={img}
                     alt={`${product.name} view ${idx + 1}`}
                     referrerPolicy="no-referrer"
+                    onError={handleImageError}
                     className="w-full h-full object-cover"
                   />
                 </button>

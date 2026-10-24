@@ -3,6 +3,7 @@ import { ShoppingBag, Eye, Check, AlertCircle } from 'lucide-react';
 import { Product } from '../types';
 import { useSettings } from '../context/SettingsContext';
 import { useCart } from '../context/CartContext';
+import { handleImageError, DEFAULT_PRODUCT_IMAGE } from '../lib/imageUtils';
 
 interface ProductCardProps {
   product: Product;
@@ -35,9 +36,10 @@ export const ProductCard: React.FC<ProductCardProps> = ({
       {/* Product Image Slot */}
       <div className="relative aspect-[4/3] bg-[#1A1226] overflow-hidden">
         <img
-          src={product.images[0] || '/src/assets/images/hero_beauty_cosmetics_1792778552190.jpg'}
+          src={product.images[0] || DEFAULT_PRODUCT_IMAGE}
           alt={product.name}
           referrerPolicy="no-referrer"
+          onError={handleImageError}
           className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
         />
 

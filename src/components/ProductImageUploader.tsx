@@ -459,7 +459,7 @@ export const ProductImageUploader: React.FC<ProductImageUploaderProps> = ({
               type="text"
               value={manualUrlInput}
               onChange={e => setManualUrlInput(e.target.value)}
-              placeholder="https://... or /src/assets/images/..."
+              placeholder="https://... or /images/products/..."
               className="flex-1 px-3 py-1.5 text-xs bg-[#1A1227] border border-[#34244C] rounded-xl text-[#F3EFEA] focus:outline-none focus:border-[#A855F7]"
             />
             <button

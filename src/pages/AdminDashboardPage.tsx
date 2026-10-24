@@ -28,6 +28,8 @@ import { Product, Category, Order, OrderStatus, PaymentStatus, Enquiry } from '.
 import { NovaluxeLogo } from '../components/NovaluxeLogo';
 import { testSupabaseConnection, supabaseUrl } from '../lib/supabase';
 import { ProductImageUploader } from '../components/ProductImageUploader';
+import { CategoryImageUploader } from '../components/CategoryImageUploader';
+import { handleImageError } from '../lib/imageUtils';
 
 interface AdminDashboardPageProps {
   onBackToStore: () => void;
@@ -52,6 +54,7 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({ onBackTo
   // Category modal state
   const [editingCategory, setEditingCategory] = useState<Category | null>(null);
   const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
+  const [isUploadingCategoryImage, setIsUploadingCategoryImage] = useState(false);
 
   // Order detail modal
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
@@ -380,7 +383,24 @@ create policy "Allow update to product-images" on storage.objects
   for update with check (bucket_id = 'product-images');
 
 create policy "Allow delete from product-images" on storage.objects
-  for delete using (bucket_id = 'product-images');`;
+  for delete using (bucket_id = 'product-images');
+
+-- 4. Create public bucket 'category-images'
+insert into storage.buckets (id, name, public)
+values ('category-images', 'category-images', true)
+on conflict (id) do update set public = true;
+
+create policy "Public Access to category-images" on storage.objects
+  for select using (bucket_id = 'category-images');
+
+create policy "Allow upload to category-images" on storage.objects
+  for insert with check (bucket_id = 'category-images');
+
+create policy "Allow update to category-images" on storage.objects
+  for update with check (bucket_id = 'category-images');
+
+create policy "Allow delete from category-images" on storage.objects
+  for delete using (bucket_id = 'category-images');`;
 
   return (
     <div className="min-h-screen bg-[#09070D] text-[#F3EFEA] flex flex-col">
@@ -572,7 +592,7 @@ create policy "Allow delete from product-images" on storage.objects
                       isFeatured: false,
                       isNewArrival: true,
                       isBestSeller: false,
-                      images: ['/src/assets/images/category_skincare_1792778552269.jpg'],
+                      images: ['/images/products/avalon_eclat.jpg'],
                       createdAt: new Date().toISOString(),
                       updatedAt: new Date().toISOString()
                     });
@@ -608,6 +628,7 @@ create policy "Allow delete from product-images" on storage.objects
                                 src={p.images[0]}
                                 alt={p.name}
                                 referrerPolicy="no-referrer"
+                                onError={handleImageError}
                                 className="w-10 h-10 rounded-lg object-cover bg-[#221735] shrink-0"
                               />
                               <div>
@@ -673,7 +694,7 @@ create policy "Allow delete from product-images" on storage.objects
                       name: '',
                       slug: '',
                       description: '',
-                      imageUrl: '/src/assets/images/category_skincare_1792778552269.jpg',
+                      imageUrl: '/images/categories/skincare.jpg',
                       isActive: true,
                       displayOrder: categories.length + 1,
                       createdAt: new Date().toISOString()
@@ -691,7 +712,7 @@ create policy "Allow delete from product-images" on storage.objects
                 {categories.map(c => (
                   <div key={c.id} className="bg-[#120D1B] rounded-2xl border border-[#261B36] overflow-hidden flex flex-col justify-between">
                     <div className="h-32 bg-[#1A1227] overflow-hidden relative">
-                      <img src={c.imageUrl} alt={c.name} referrerPolicy="no-referrer" className="w-full h-full object-cover" />
+                      <img src={c.imageUrl} alt={c.name} referrerPolicy="no-referrer" onError={handleImageError} className="w-full h-full object-cover" />
                       <div className="absolute inset-0 bg-gradient-to-t from-[#120D1B] via-transparent to-transparent" />
                     </div>
                     <div className="p-5 space-y-2">
@@ -1375,20 +1396,17 @@ create policy "Allow delete from product-images" on storage.objects
                     const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
                     setEditingCategory({ ...editingCategory, name, slug });
                   }}
-                  className="w-full px-3 py-2 bg-[#1A1227] border border-[#34244C] rounded-xl text-[#F3EFEA]"
+                  className="w-full px-3 py-2 bg-[#1A1227] border border-[#34244C] rounded-xl text-[#F3EFEA] focus:outline-none focus:border-[#A855F7]"
                 />
               </div>
 
-              <div className="space-y-1">
-                <label className="font-semibold text-[#C5B9D8]">Category Image URL</label>
-                <input
-                  type="text"
-                  required
-                  value={editingCategory.imageUrl}
-                  onChange={e => setEditingCategory({ ...editingCategory, imageUrl: e.target.value })}
-                  className="w-full px-3 py-2 bg-[#1A1227] border border-[#34244C] rounded-xl text-[#F3EFEA]"
-                />
-              </div>
+              {/* CATEGORY IMAGE UPLOADER */}
+              <CategoryImageUploader
+                imageUrl={editingCategory.imageUrl || ''}
+                categorySlug={editingCategory.slug || 'category'}
+                onImageChange={url => setEditingCategory({ ...editingCategory, imageUrl: url })}
+                onUploadStateChange={uploading => setIsUploadingCategoryImage(uploading)}
+              />
 
               <div className="space-y-1">
                 <label className="font-semibold text-[#C5B9D8]">Description</label>
@@ -1396,23 +1414,28 @@ create policy "Allow delete from product-images" on storage.objects
                   rows={2}
                   value={editingCategory.description}
                   onChange={e => setEditingCategory({ ...editingCategory, description: e.target.value })}
-                  className="w-full px-3 py-2 bg-[#1A1227] border border-[#34244C] rounded-xl text-[#F3EFEA]"
+                  className="w-full px-3 py-2 bg-[#1A1227] border border-[#34244C] rounded-xl text-[#F3EFEA] focus:outline-none focus:border-[#A855F7]"
                 />
               </div>
 
               <div className="pt-4 border-t border-[#241933] flex justify-end gap-3">
                 <button
                   type="button"
-                  onClick={() => setIsCategoryModalOpen(false)}
-                  className="px-4 py-2 rounded-xl bg-[#1A1227] text-[#C5B9D8]"
+                  onClick={() => {
+                    setIsCategoryModalOpen(false);
+                    setEditingCategory(null);
+                  }}
+                  className="px-4 py-2 rounded-xl bg-[#1A1227] text-[#C5B9D8] hover:bg-[#251A38] transition-colors cursor-pointer"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 rounded-xl bg-gradient-to-r from-[#A855F7] to-[#CA8A04] text-[#0A0710] font-semibold"
+                  disabled={isUploadingCategoryImage || !editingCategory.imageUrl}
+                  className="px-5 py-2 rounded-xl bg-gradient-to-r from-[#A855F7] to-[#CA8A04] text-[#0A0710] font-semibold disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 shadow-md transition-all cursor-pointer"
                 >
-                  Save Category
+                  {isUploadingCategoryImage && <RefreshCw className="w-4 h-4 animate-spin text-[#0A0710]" />}
+                  <span>{isUploadingCategoryImage ? 'Uploading Image...' : 'Save Category'}</span>
                 </button>
               </div>
             </form>

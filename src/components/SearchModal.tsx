@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Search, X, ArrowRight } from 'lucide-react';
 import { useSettings } from '../context/SettingsContext';
 import { Product } from '../types';
+import { handleImageError } from '../lib/imageUtils';
 
 interface SearchModalProps {
   isOpen: boolean;
@@ -121,6 +122,7 @@ export const SearchModal: React.FC<SearchModalProps> = ({
                           src={product.images[0]}
                           alt={product.name}
                           referrerPolicy="no-referrer"
+                          onError={handleImageError}
                           className="w-full h-full object-cover"
                         />
                       </div>
