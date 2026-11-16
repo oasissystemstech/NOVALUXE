@@ -1,15 +1,37 @@
 @import "tailwindcss";
+@custom-variant dark (&:where(.dark, .dark *));
 
 @layer base {
   :root {
     --font-serif: "Playfair Display", Georgia, serif;
     --font-sans: "DM Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+
+    --nl-bg-primary: #FAF8F4;
+    --nl-bg-secondary: #F2EBDD;
+    --nl-bg-card: #FFFFFF;
+    --nl-text-primary: #211B25;
+    --nl-text-secondary: #746B78;
+    --nl-accent-purple: #8B42C9;
+    --nl-accent-gold: #C99A35;
+    --nl-border: #E4DDD0;
+  }
+
+  .dark {
+    --nl-bg-primary: #0C0813;
+    --nl-bg-secondary: #120D1B;
+    --nl-bg-card: #120D1B;
+    --nl-text-primary: #F3EFEA;
+    --nl-text-secondary: #9C8EB2;
+    --nl-accent-purple: #A855F7;
+    --nl-accent-gold: #F5D061;
+    --nl-border: #261B36;
   }
 
   body {
     font-family: var(--font-sans);
-    background-color: #0c0a10;
-    color: #f5f2ea;
+    background-color: var(--nl-bg-primary);
+    color: var(--nl-text-primary);
+    transition: background-color 200ms cubic-bezier(0.16, 1, 0.3, 1), color 200ms cubic-bezier(0.16, 1, 0.3, 1);
   }
 
   h1, h2, h3, .font-editorial {
@@ -19,21 +41,47 @@
 
 /* Custom NOVALUXE brand gradients and styling */
 .brand-gradient-text {
+  background: linear-gradient(135deg, #8B42C9 0%, #6D28D9 40%, #C99A35 80%, #9A6F18 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.dark .brand-gradient-text {
   background: linear-gradient(135deg, #A855F7 0%, #C084FC 25%, #E9D5FF 45%, #FDE68A 70%, #EAB308 90%, #CA8A04 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
 }
 
 .brand-gold-text {
+  background: linear-gradient(135deg, #C99A35 0%, #A67B1E 60%, #825D12 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.dark .brand-gold-text {
   background: linear-gradient(135deg, #FDE68A 0%, #EAB308 50%, #B45309 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
 }
 
 .brand-purple-glow {
+  box-shadow: 0 0 30px -5px rgba(139, 66, 201, 0.18);
+}
+
+.dark .brand-purple-glow {
   box-shadow: 0 0 30px -5px rgba(139, 92, 246, 0.25);
 }
 
 .brand-gold-glow {
+  box-shadow: 0 0 25px -5px rgba(201, 154, 53, 0.16);
+}
+
+.dark .brand-gold-glow {
   box-shadow: 0 0 25px -5px rgba(234, 179, 8, 0.2);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  body, * {
+    scroll-behavior: auto !important;
+  }
 }

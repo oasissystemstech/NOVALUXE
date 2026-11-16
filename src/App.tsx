@@ -2,12 +2,14 @@ import React, { useState, useEffect } from 'react';
 import { SettingsProvider } from './context/SettingsContext';
 import { CartProvider } from './context/CartContext';
 import { AuthProvider, useAuth } from './context/AuthContext';
+import { ThemeProvider } from './context/ThemeContext';
 import { Header } from './components/Header';
 import { Footer } from './components/Footer';
 import { AnnouncementBar } from './components/AnnouncementBar';
 import { CartDrawer } from './components/CartDrawer';
 import { SearchModal } from './components/SearchModal';
 import { WhatsAppFloatingButton } from './components/WhatsAppFloatingButton';
+import { PromotionalFlyerModal } from './components/PromotionalFlyerModal';
 import { HomePage } from './pages/HomePage';
 import { ShopPage } from './pages/ShopPage';
 import { ProductDetailPage } from './pages/ProductDetailPage';
@@ -17,13 +19,13 @@ import { OrderConfirmationPage } from './pages/OrderConfirmationPage';
 import { AboutPage } from './pages/AboutPage';
 import { ContactPage } from './pages/ContactPage';
 import { PolicyPages } from './pages/PolicyPages';
+import { OrderTrackingPage } from './pages/OrderTrackingPage';
 import { AdminLoginPage } from './pages/AdminLoginPage';
 import { AdminDashboardPage } from './pages/AdminDashboardPage';
 import { Product, Order } from './types';
-import { store } from './lib/store';
 
 const MainAppContent: React.FC = () => {
-  const { isAdmin } = useAuth();
+  const { isAdmin, isAuthLoading } = useAuth();
 
   // Route state
   const [currentPath, setCurrentPath] = useState<string>(() => {
@@ -77,9 +79,22 @@ const MainAppContent: React.FC = () => {
 
   // If visiting an admin route
   if (isAdminRoute) {
+    if (isAuthLoading) {
+      return (
+        <div className="min-h-screen bg-[#FAF8F4] text-[#211B25] dark:bg-[#0C0813] dark:text-[#F3EFEA] flex items-center justify-center p-6 transition-colors duration-200">
+          <div className="text-center space-y-3">
+            <div className="w-8 h-8 rounded-full border-2 border-[#8B42C9] border-t-transparent animate-spin mx-auto" />
+            <p className="text-xs text-[#746B78] dark:text-[#9C8EB2] uppercase tracking-wider">
+              Verifying administrative session...
+            </p>
+          </div>
+        </div>
+      );
+    }
+
     if (!isAdmin) {
       return (
-        <div className="min-h-screen bg-[#0C0813] text-[#F3EFEA] flex flex-col justify-between">
+        <div className="min-h-screen bg-[#FAF8F4] text-[#211B25] dark:bg-[#0C0813] dark:text-[#F3EFEA] flex flex-col justify-between transition-colors duration-200">
           <AnnouncementBar />
           <AdminLoginPage
             onSuccess={() => navigateTo('/admin')}
@@ -94,7 +109,7 @@ const MainAppContent: React.FC = () => {
 
   // Render regular customer-facing storefront
   return (
-    <div className="min-h-screen bg-[#0C0813] text-[#F3EFEA] flex flex-col justify-between selection:bg-[#7C3AED] selection:text-white">
+    <div className="min-h-screen bg-[#FAF8F4] text-[#211B25] dark:bg-[#0C0813] dark:text-[#F3EFEA] flex flex-col justify-between selection:bg-[#8B42C9] dark:selection:bg-[#7C3AED] selection:text-white transition-colors duration-200">
       {/* Top Banner and Header */}
       <div>
         <AnnouncementBar />
@@ -158,6 +173,10 @@ const MainAppContent: React.FC = () => {
 
         {currentPath === '/contact' && <ContactPage />}
 
+        {currentPath === '/track-order' && (
+          <OrderTrackingPage onNavigateToShop={() => navigateTo('/shop')} />
+        )}
+
         {currentPath === '/delivery-returns' && (
           <PolicyPages policyType="delivery-returns" onBack={() => navigateTo('/')} />
         )}
@@ -187,6 +206,9 @@ const MainAppContent: React.FC = () => {
         onSelectProduct={handleViewProduct}
       />
 
+      {/* Automated Promotional Flyer / Video Pop-Up on Homepage */}
+      {currentPath === '/' && <PromotionalFlyerModal onNavigate={navigateTo} />}
+
       {/* Floating Hover WhatsApp Contact Button */}
       <WhatsAppFloatingButton />
     </div>
@@ -195,13 +217,15 @@ const MainAppContent: React.FC = () => {
 
 export function App() {
   return (
-    <SettingsProvider>
-      <AuthProvider>
-        <CartProvider>
-          <MainAppContent />
-        </CartProvider>
-      </AuthProvider>
-    </SettingsProvider>
+    <ThemeProvider>
+      <SettingsProvider>
+        <AuthProvider>
+          <CartProvider>
+            <MainAppContent />
+          </CartProvider>
+        </AuthProvider>
+      </SettingsProvider>
+    </ThemeProvider>
   );
 }
 

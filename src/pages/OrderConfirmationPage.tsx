@@ -66,27 +66,27 @@ _Sent via NOVALUXE Official Website_`;
   return (
     <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-12 space-y-10">
       {/* Top Success Banner */}
-      <div className="bg-[#120D1B] rounded-3xl border border-[#2B1D3E] p-8 sm:p-10 text-center space-y-4">
-        <div className="w-16 h-16 rounded-full bg-emerald-950/80 border border-emerald-500/50 text-emerald-400 flex items-center justify-center mx-auto">
+      <div className="bg-white dark:bg-[#120D1B] rounded-3xl border border-[#E4DDD0] dark:border-[#2B1D3E] p-8 sm:p-10 text-center space-y-4 shadow-sm dark:shadow-none">
+        <div className="w-16 h-16 rounded-full bg-emerald-50 dark:bg-emerald-950/80 border border-emerald-500/50 text-emerald-700 dark:text-emerald-400 flex items-center justify-center mx-auto">
           <CheckCircle className="w-8 h-8" />
         </div>
 
         <div className="space-y-1">
-          <p className="text-xs uppercase tracking-widest text-[#F5D061] font-semibold">
+          <p className="text-xs uppercase tracking-widest text-[#9E751C] dark:text-[#F5D061] font-semibold">
             Order Submitted Successfully
           </p>
-          <h1 className="text-2xl sm:text-3xl font-serif font-bold text-[#F3EFEA]">
+          <h1 className="text-2xl sm:text-3xl font-serif font-bold text-[#211B25] dark:text-[#F3EFEA]">
             Thank You, {order.customerName}!
           </h1>
-          <p className="text-xs text-[#9C8EB2] max-w-md mx-auto">
+          <p className="text-xs text-[#746B78] dark:text-[#9C8EB2] max-w-md mx-auto">
             Your order has been recorded in our database. Please tap the button below to transmit your order details directly to our WhatsApp service for rapid fulfillment.
           </p>
         </div>
 
         {/* Order Reference Box */}
-        <div className="inline-block bg-[#1B1327] border border-[#3C2856] rounded-2xl px-6 py-3 my-2">
-          <span className="text-xs text-[#9C8EB2] block uppercase tracking-wider">Order Reference</span>
-          <span className="text-xl sm:text-2xl font-mono font-bold text-[#F5D061] tracking-wider">
+        <div className="inline-block bg-[#F2EBDD] dark:bg-[#1B1327] border border-[#E4DDD0] dark:border-[#3C2856] rounded-2xl px-6 py-3 my-2">
+          <span className="text-xs text-[#746B78] dark:text-[#9C8EB2] block uppercase tracking-wider">Order Reference</span>
+          <span className="text-xl sm:text-2xl font-mono font-bold text-[#9E751C] dark:text-[#F5D061] tracking-wider">
             {order.orderReference}
           </span>
         </div>
@@ -106,16 +106,16 @@ _Sent via NOVALUXE Official Website_`;
 
           <button
             onClick={handleCopyMessage}
-            className="w-full py-2.5 px-4 rounded-xl bg-[#1A1227] hover:bg-[#241935] text-[#D8CCE8] border border-[#34244C] text-xs font-medium flex items-center justify-center gap-2 transition-colors cursor-pointer"
+            className="w-full py-2.5 px-4 rounded-xl bg-[#FAF8F4] dark:bg-[#1A1227] hover:bg-[#F2EBDD] dark:hover:bg-[#241935] text-[#211B25] dark:text-[#D8CCE8] border border-[#E4DDD0] dark:border-[#34244C] text-xs font-medium flex items-center justify-center gap-2 transition-colors cursor-pointer"
           >
             {copied ? (
               <>
-                <Check className="w-4 h-4 text-emerald-400" />
+                <Check className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
                 <span>Order Message Copied to Clipboard!</span>
               </>
             ) : (
               <>
-                <Copy className="w-4 h-4 text-[#8C829B]" />
+                <Copy className="w-4 h-4 text-[#746B78] dark:text-[#8C829B]" />
                 <span>Copy Message Text (in case WhatsApp Web is used)</span>
               </>
             )}
@@ -124,32 +124,32 @@ _Sent via NOVALUXE Official Website_`;
       </div>
 
       {/* Itemized Order Receipt Snapshot */}
-      <div className="bg-[#120D1B] rounded-2xl border border-[#261B36] p-6 sm:p-8 space-y-6">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-4 border-b border-[#261B36] gap-2">
+      <div className="bg-white dark:bg-[#120D1B] rounded-2xl border border-[#E4DDD0] dark:border-[#261B36] p-6 sm:p-8 space-y-6 shadow-sm dark:shadow-none">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-4 border-b border-[#E4DDD0] dark:border-[#261B36] gap-2">
           <div>
-            <h2 className="text-base font-serif font-bold text-[#F3EFEA]">
+            <h2 className="text-base font-serif font-bold text-[#211B25] dark:text-[#F3EFEA]">
               Itemized Receipt Snapshot
             </h2>
-            <p className="text-xs text-[#9C8EB2]">
+            <p className="text-xs text-[#746B78] dark:text-[#9C8EB2]">
               Recorded on {new Date(order.createdAt).toLocaleDateString()} at{' '}
               {new Date(order.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
             </p>
           </div>
           <div className="inline-flex items-center gap-2 text-xs">
-            <span className="text-[#9C8EB2]">Status:</span>
-            <span className="px-2.5 py-0.5 rounded-full bg-[#201533] text-[#F5D061] font-semibold border border-[#3A2954]">
+            <span className="text-[#746B78] dark:text-[#9C8EB2]">Status:</span>
+            <span className="px-2.5 py-0.5 rounded-full bg-[#F2EBDD] dark:bg-[#201533] text-[#9E751C] dark:text-[#F5D061] font-semibold border border-[#E4DDD0] dark:border-[#3A2954]">
               {order.orderStatus}
             </span>
           </div>
         </div>
 
         {/* Ordered items */}
-        <div className="divide-y divide-[#221633]">
+        <div className="divide-y divide-[#E4DDD0] dark:divide-[#221633]">
           {order.items.map((item, idx) => (
             <div key={idx} className="py-3.5 flex items-center justify-between text-xs gap-4">
               <div className="flex items-center gap-3 min-w-0">
                 {item.imageUrl && (
-                  <div className="w-12 h-12 rounded-lg bg-[#1A1227] overflow-hidden shrink-0 border border-[#34244C]/50">
+                  <div className="w-12 h-12 rounded-lg bg-[#F2EBDD] dark:bg-[#1A1227] overflow-hidden shrink-0 border border-[#E4DDD0] dark:border-[#34244C]/50">
                     <img
                       src={item.imageUrl}
                       alt={item.productName}
@@ -160,16 +160,16 @@ _Sent via NOVALUXE Official Website_`;
                   </div>
                 )}
                 <div className="min-w-0">
-                  <p className="font-medium text-[#F3EFEA] truncate">{item.productName}</p>
+                  <p className="font-medium text-[#211B25] dark:text-[#F3EFEA] truncate">{item.productName}</p>
                   {item.selectedVariant && (
-                    <p className="text-[11px] text-[#A855F7]">{item.selectedVariant}</p>
+                    <p className="text-[11px] text-[#8B42C9] dark:text-[#A855F7]">{item.selectedVariant}</p>
                   )}
-                  <p className="text-[11px] text-[#8C829B]">
+                  <p className="text-[11px] text-[#746B78] dark:text-[#8C829B]">
                     Quantity: {item.quantity} × {order.currency}{item.unitPrice.toFixed(2)}
                   </p>
                 </div>
               </div>
-              <span className="font-semibold text-[#F5D061] tabular-nums shrink-0">
+              <span className="font-semibold text-[#9E751C] dark:text-[#F5D061] tabular-nums shrink-0">
                 {order.currency}{item.subtotal.toFixed(2)}
               </span>
             </div>
@@ -177,44 +177,44 @@ _Sent via NOVALUXE Official Website_`;
         </div>
 
         {/* Financial Recap */}
-        <div className="pt-4 border-t border-[#261B36] space-y-2 text-xs">
-          <div className="flex justify-between text-[#C5B9D8]">
+        <div className="pt-4 border-t border-[#E4DDD0] dark:border-[#261B36] space-y-2 text-xs">
+          <div className="flex justify-between text-[#524858] dark:text-[#C5B9D8]">
             <span>Subtotal</span>
-            <span className="font-semibold text-[#F3EFEA] tabular-nums">
+            <span className="font-semibold text-[#211B25] dark:text-[#F3EFEA] tabular-nums">
               {order.currency}{order.subtotal.toFixed(2)}
             </span>
           </div>
-          <div className="flex justify-between text-[#C5B9D8]">
+          <div className="flex justify-between text-[#524858] dark:text-[#C5B9D8]">
             <span>Delivery Fee ({order.deliveryMethod})</span>
-            <span className="font-semibold text-[#F3EFEA] tabular-nums">
+            <span className="font-semibold text-[#211B25] dark:text-[#F3EFEA] tabular-nums">
               {order.deliveryMethod === 'Pickup' ? 'Free' : `${order.currency}${order.deliveryFee.toFixed(2)}`}
             </span>
           </div>
-          <div className="pt-2 border-t border-[#221633] flex justify-between items-baseline text-sm">
-            <span className="font-bold text-[#F3EFEA]">Total</span>
-            <span className="text-xl font-serif font-bold text-[#F5D061] tabular-nums">
+          <div className="pt-2 border-t border-[#E4DDD0] dark:border-[#221633] flex justify-between items-baseline text-sm">
+            <span className="font-bold text-[#211B25] dark:text-[#F3EFEA]">Total</span>
+            <span className="text-xl font-serif font-bold text-[#9E751C] dark:text-[#F5D061] tabular-nums">
               {order.currency}{order.totalAmount.toFixed(2)}
             </span>
           </div>
         </div>
 
         {/* Customer & Destination Summary */}
-        <div className="pt-4 border-t border-[#261B36] grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
-          <div className="p-4 rounded-xl bg-[#171022] border border-[#2D1E42] space-y-1">
-            <p className="text-[11px] uppercase tracking-wider text-[#A855F7] font-semibold">Customer</p>
-            <p className="font-medium text-[#F3EFEA]">{order.customerName}</p>
-            <p className="text-[#C5B9D8]">{order.customerPhone}</p>
-            {order.customerEmail && <p className="text-[#8C829B]">{order.customerEmail}</p>}
+        <div className="pt-4 border-t border-[#E4DDD0] dark:border-[#261B36] grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
+          <div className="p-4 rounded-xl bg-[#FAF8F4] dark:bg-[#171022] border border-[#E4DDD0] dark:border-[#2D1E42] space-y-1">
+            <p className="text-[11px] uppercase tracking-wider text-[#8B42C9] dark:text-[#A855F7] font-semibold">Customer</p>
+            <p className="font-medium text-[#211B25] dark:text-[#F3EFEA]">{order.customerName}</p>
+            <p className="text-[#524858] dark:text-[#C5B9D8]">{order.customerPhone}</p>
+            {order.customerEmail && <p className="text-[#746B78] dark:text-[#8C829B]">{order.customerEmail}</p>}
           </div>
 
-          <div className="p-4 rounded-xl bg-[#171022] border border-[#2D1E42] space-y-1">
-            <p className="text-[11px] uppercase tracking-wider text-[#F5D061] font-semibold">
+          <div className="p-4 rounded-xl bg-[#FAF8F4] dark:bg-[#171022] border border-[#E4DDD0] dark:border-[#2D1E42] space-y-1">
+            <p className="text-[11px] uppercase tracking-wider text-[#9E751C] dark:text-[#F5D061] font-semibold">
               {order.deliveryMethod === 'Pickup' ? 'Store Counter' : 'Delivery Address'}
             </p>
-            <p className="font-medium text-[#F3EFEA]">{order.deliveryLocation}</p>
-            <p className="text-[#C5B9D8]">{order.deliveryAddress}</p>
+            <p className="font-medium text-[#211B25] dark:text-[#F3EFEA]">{order.deliveryLocation}</p>
+            <p className="text-[#524858] dark:text-[#C5B9D8]">{order.deliveryAddress}</p>
             {order.customerNotes && (
-              <p className="text-[#8C829B] italic mt-1">Note: {order.customerNotes}</p>
+              <p className="text-[#746B78] dark:text-[#8C829B] italic mt-1">Note: {order.customerNotes}</p>
             )}
           </div>
         </div>
@@ -224,13 +224,13 @@ _Sent via NOVALUXE Official Website_`;
       <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pt-4">
         <button
           onClick={onNavigateHome}
-          className="text-xs text-[#9C8EB2] hover:text-[#F3EFEA] transition-colors"
+          className="text-xs text-[#746B78] dark:text-[#9C8EB2] hover:text-[#211B25] dark:hover:text-[#F3EFEA] transition-colors cursor-pointer"
         >
           ← Return to Homepage
         </button>
         <button
           onClick={onNavigateToShop}
-          className="px-6 py-2.5 rounded-xl bg-[#1A1227] hover:bg-[#251A38] text-[#F5D061] border border-[#3A2954] text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
+          className="px-6 py-2.5 rounded-xl bg-white dark:bg-[#1A1227] hover:bg-[#F2EBDD] dark:hover:bg-[#251A38] text-[#9E751C] dark:text-[#F5D061] border border-[#E4DDD0] dark:border-[#3A2954] text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
         >
           <span>Continue Browsing Products</span>
           <ArrowRight className="w-3.5 h-3.5" />

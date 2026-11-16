@@ -1,6 +1,20 @@
-import { Category, Product, Order, Enquiry, SiteSettings, Customer } from '../types';
+import { Category, Product, Order, Enquiry, SiteSettings, PromoCampaignConfig, BulkUploadHistoryEntry } from '../types';
 import { supabase } from './supabase';
 import { normalizeImageUrl } from './imageUtils';
+
+export const INITIAL_PROMO_CAMPAIGN: PromoCampaignConfig = {
+  enabled: true,
+  mediaType: 'video',
+  mediaUrl: '/videos/novaluxe-promo.mp4',
+  posterUrl: '/images/hero/hero_beauty_cosmetics.jpg',
+  title: 'NOVALUXE by Sennel',
+  subtitle: 'Elevate your daily routine with curated cosmetics, skincare, and luxury fragrances in Monrovia.',
+  ctaText: 'EXPLORE NOVALUXE',
+  destinationPath: '/shop',
+  frequency: 'once_per_session',
+  startDate: '',
+  endDate: ''
+};
 
 export const INITIAL_SETTINGS: SiteSettings = {
   businessName: 'NOVALUXE by Sennel',
@@ -27,7 +41,8 @@ export const INITIAL_SETTINGS: SiteSettings = {
   mission:
     'To make beauty, personal care, and everyday essentials conveniently accessible through a thoughtful product selection and a customer-focused shopping experience.',
   vision:
-    'To become a trusted and recognizable destination for beauty and everyday essentials, connecting customers with products that complement their lifestyles.'
+    'To become a trusted and recognizable destination for beauty and everyday essentials, connecting customers with products that complement their lifestyles.',
+  promoCampaign: INITIAL_PROMO_CAMPAIGN
 };
 
 export const INITIAL_CATEGORIES: Category[] = [
@@ -458,7 +473,8 @@ const STORAGE_KEYS = {
   CATEGORIES: 'novaluxe_categories_v1',
   ORDERS: 'novaluxe_orders_v1',
   ENQUIRIES: 'novaluxe_enquiries_v1',
-  SETTINGS: 'novaluxe_settings_v1'
+  SETTINGS: 'novaluxe_settings_v1',
+  BULK_HISTORY: 'novaluxe_bulk_upload_history_v1'
 };
 
 class StoreRepository {
@@ -483,15 +499,45 @@ class StoreRepository {
   getSettings(): SiteSettings {
     const raw = this.get<SiteSettings>(STORAGE_KEYS.SETTINGS, INITIAL_SETTINGS);
     return {
+      ...INITIAL_SETTINGS,
       ...raw,
-      heroImage: normalizeImageUrl(raw.heroImage, '/images/hero/hero_beauty_cosmetics.jpg')
+      heroImage: normalizeImageUrl(raw.heroImage, '/images/hero/hero_beauty_cosmetics.jpg'),
+      promoCampaign: {
+        ...INITIAL_PROMO_CAMPAIGN,
+        ...(raw.promoCampaign || {})
+      }
     };
   }
 
   updateSettings(settings: Partial<SiteSettings>): SiteSettings {
     const current = this.getSettings();
-    const updated = { ...current, ...settings };
+    const updated: SiteSettings = {
+      ...current,
+      ...settings,
+      promoCampaign: settings.promoCampaign
+        ? { ...current.promoCampaign, ...settings.promoCampaign }
+        : current.promoCampaign
+    };
     this.set(STORAGE_KEYS.SETTINGS, updated);
+
+    if (supabase) {
+      Promise.resolve(
+        supabase
+          .from('site_settings')
+          .upsert(
+            {
+              setting_key: 'general_config',
+              setting_value: updated
+            },
+            { onConflict: 'setting_key' }
+          )
+      )
+        .then(({ error }: any) => {
+          if (error) console.info('Supabase settings sync note:', error.message);
+        })
+        .catch(() => {});
+    }
+
     return updated;
   }
 
@@ -566,6 +612,12 @@ class StoreRepository {
     const now = new Date().toISOString();
     const toSave: Product = {
       ...prod,
+      slug:
+        prod.slug ||
+        `${prod.name
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, '-')
+          .replace(/(^-|-$)/g, '')}-${Date.now().toString().slice(-4)}`,
       updatedAt: now,
       createdAt: prod.createdAt || now
     };
@@ -575,12 +627,236 @@ class StoreRepository {
       list.unshift(toSave);
     }
     this.set(STORAGE_KEYS.PRODUCTS, list);
+
+    // Sync to Supabase products & product_images tables if configured
+    if (supabase) {
+      const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(toSave.categoryId);
+      const basePayload: Record<string, any> = {
+        name: toSave.name,
+        slug: toSave.slug,
+        description: toSave.description,
+        price: toSave.price,
+        currency: toSave.currency || 'USD',
+        sku: toSave.sku,
+        stock_quantity: toSave.stockQuantity,
+        is_available: toSave.isAvailable,
+        is_featured: toSave.isFeatured,
+        is_new_arrival: toSave.isNewArrival,
+        is_best_seller: toSave.isBestSeller
+      };
+      if (isUuid) {
+        basePayload.category_id = toSave.categoryId;
+      }
+
+      const extendedPayload: Record<string, any> = {
+        ...basePayload,
+        brand: toSave.brand || null,
+        product_type: toSave.productType || null,
+        size_or_volume: toSave.sizeOrVolume || null,
+        specifications: toSave.specifications || null,
+        key_ingredients: toSave.keyIngredients || [],
+        features: toSave.features || [],
+        tags: toSave.tags || []
+      };
+
+      const sb = supabase;
+      Promise.resolve(
+        sb
+          .from('products')
+          .upsert(extendedPayload, { onConflict: 'slug' })
+          .select('id')
+          .single()
+      )
+        .then(async ({ data, error }: any) => {
+          let productRow = data;
+          if (error && (error.message?.includes('column') || error.message?.includes('schema cache'))) {
+            const retry = await sb
+              .from('products')
+              .upsert(basePayload, { onConflict: 'slug' })
+              .select('id')
+              .single();
+            productRow = retry.data;
+            if (retry.error) {
+              console.info('Supabase product sync note:', retry.error.message);
+              return;
+            }
+          } else if (error) {
+            console.info('Supabase product sync note:', error.message);
+            return;
+          }
+          if (productRow?.id && toSave.images?.length > 0) {
+            await sb.from('product_images').delete().eq('product_id', productRow.id);
+            await sb.from('product_images').insert(
+              toSave.images.map((imgUrl, idx) => ({
+                product_id: productRow.id,
+                image_url: imgUrl,
+                alt_text: toSave.name,
+                display_order: idx
+              }))
+            );
+          }
+        })
+        .catch(() => {});
+    }
+
     return toSave;
   }
 
   deleteProduct(id: string): void {
     const list = this.getProducts().filter(p => p.id !== id);
     this.set(STORAGE_KEYS.PRODUCTS, list);
+  }
+
+  // Bulk Upload History
+  getBulkUploadHistory(): BulkUploadHistoryEntry[] {
+    return this.get<BulkUploadHistoryEntry[]>(STORAGE_KEYS.BULK_HISTORY, []);
+  }
+
+  addBulkUploadHistory(entry: BulkUploadHistoryEntry): BulkUploadHistoryEntry[] {
+    const list = this.getBulkUploadHistory();
+    const updated = [entry, ...list].slice(0, 50);
+    this.set(STORAGE_KEYS.BULK_HISTORY, updated);
+
+    if (supabase) {
+      Promise.resolve(
+        supabase.from('bulk_upload_history').insert({
+          uploaded_count: entry.uploadedCount,
+          processed_count: entry.processedCount,
+          awaiting_review_count: entry.awaitingReviewCount,
+          saved_count: entry.savedCount,
+          failed_count: entry.failedCount,
+          notes: entry.notes || null
+        })
+      ).catch(() => {});
+    }
+
+    return updated;
+  }
+
+  updateBulkUploadHistoryEntry(id: string, patch: Partial<BulkUploadHistoryEntry>): BulkUploadHistoryEntry[] {
+    const list = this.getBulkUploadHistory();
+    const next = list.map(item => (item.id === id ? { ...item, ...patch } : item));
+    this.set(STORAGE_KEYS.BULK_HISTORY, next);
+    return next;
+  }
+
+  async fetchBulkUploadHistoryFromSupabase(): Promise<BulkUploadHistoryEntry[]> {
+    const localList = this.getBulkUploadHistory();
+    if (!supabase) return localList;
+    try {
+      const { data, error } = await supabase
+        .from('bulk_upload_history')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(50);
+
+      if (!error && Array.isArray(data) && data.length > 0) {
+        const mapped: BulkUploadHistoryEntry[] = data.map((row: any) => ({
+          id: row.id,
+          createdAt: row.created_at,
+          uploadedCount: Number(row.uploaded_count || 0),
+          processedCount: Number(row.processed_count || 0),
+          awaitingReviewCount: Number(row.awaiting_review_count || 0),
+          savedCount: Number(row.saved_count || 0),
+          failedCount: Number(row.failed_count || 0),
+          notes: row.notes || undefined
+        }));
+        this.set(STORAGE_KEYS.BULK_HISTORY, mapped);
+        return mapped;
+      }
+    } catch {
+      // Fall back to local history when offline or unauthenticated in Supabase Auth
+    }
+    return localList;
+  }
+
+  // Catalog Hydration from Supabase (public read)
+  async syncCatalogFromSupabase(): Promise<{ categories?: Category[]; products?: Product[] }> {
+    if (!supabase) return {};
+    try {
+      const [catRes, prodRes] = await Promise.all([
+        supabase
+          .from('categories')
+          .select('*')
+          .eq('is_active', true)
+          .order('display_order', { ascending: true }),
+        supabase
+          .from('products')
+          .select('*, product_images(*), product_variants(*)')
+          .order('created_at', { ascending: false })
+      ]);
+
+      const result: { categories?: Category[]; products?: Product[] } = {};
+
+      if (!catRes.error && Array.isArray(catRes.data) && catRes.data.length > 0) {
+        const mappedCats: Category[] = catRes.data.map((row: any) => ({
+          id: row.id,
+          name: row.name,
+          slug: row.slug,
+          description: row.description || '',
+          imageUrl: normalizeImageUrl(row.image_url, '/images/categories/skincare.jpg'),
+          isActive: Boolean(row.is_active ?? true),
+          displayOrder: Number(row.display_order || 0),
+          createdAt: row.created_at || new Date().toISOString()
+        }));
+        this.set(STORAGE_KEYS.CATEGORIES, mappedCats);
+        result.categories = mappedCats;
+      }
+
+      if (!prodRes.error && Array.isArray(prodRes.data) && prodRes.data.length > 0) {
+        const mappedProds: Product[] = prodRes.data.map((row: any) => {
+          const imgs = Array.isArray(row.product_images)
+            ? [...row.product_images]
+                .sort((a: any, b: any) => Number(a.display_order || 0) - Number(b.display_order || 0))
+                .map((img: any) => normalizeImageUrl(img.image_url, '/images/products/avalon_eclat.jpg'))
+            : [];
+
+          const variants = Array.isArray(row.product_variants)
+            ? row.product_variants.map((v: any) => ({
+                id: v.id,
+                productId: v.product_id || row.id,
+                variantName: v.variant_name,
+                variantValue: v.variant_value,
+                priceAdjustment: Number(v.price_adjustment || 0),
+                stockQuantity: Number(v.stock_quantity || 0)
+              }))
+            : undefined;
+
+          return {
+            id: row.id,
+            name: row.name,
+            slug: row.slug,
+            description: row.description || '',
+            price: Number(row.price || 0),
+            currency: row.currency || 'USD',
+            categoryId: row.category_id || '',
+            sku: row.sku || '',
+            stockQuantity: Number(row.stock_quantity || 0),
+            isAvailable: Boolean(row.is_available ?? true),
+            isFeatured: Boolean(row.is_featured ?? false),
+            isNewArrival: Boolean(row.is_new_arrival ?? false),
+            isBestSeller: Boolean(row.is_best_seller ?? false),
+            images: imgs.length > 0 ? imgs : ['/images/products/avalon_eclat.jpg'],
+            variants: variants && variants.length > 0 ? variants : undefined,
+            brand: row.brand || undefined,
+            productType: row.product_type || undefined,
+            sizeOrVolume: row.size_or_volume || undefined,
+            specifications: row.specifications || undefined,
+            keyIngredients: Array.isArray(row.key_ingredients) ? row.key_ingredients : undefined,
+            features: Array.isArray(row.features) ? row.features : undefined,
+            tags: Array.isArray(row.tags) ? row.tags : undefined,
+            createdAt: row.created_at || new Date().toISOString(),
+            updatedAt: row.updated_at || row.created_at || new Date().toISOString()
+          };
+        });
+        this.set(STORAGE_KEYS.PRODUCTS, mappedProds);
+        result.products = mappedProds;
+      }
+
+      return result;
+    } catch {
+      return {};
+    }
   }
 
   // Orders
@@ -599,63 +875,229 @@ class StoreRepository {
     return this.getOrders().find(o => o.id === refOrId || o.orderReference === refOrId);
   }
 
-  createOrder(orderData: Omit<Order, 'id' | 'orderReference' | 'createdAt' | 'updatedAt'>): Order {
+  recordConfirmedOrderLocally(confirmedOrder: Order): Order {
     const orders = this.getOrders();
-    const randomHex = Math.floor(1000 + Math.random() * 9000);
-    const orderReference = `NVL-${new Date().getFullYear()}-${randomHex}`;
-    const id = `ord-${Date.now()}`;
-    const now = new Date().toISOString();
-
-    const newOrder: Order = {
-      ...orderData,
-      id,
-      orderReference,
-      createdAt: now,
-      updatedAt: now
-    };
-
-    orders.unshift(newOrder);
+    const existingIdx = orders.findIndex(o => o.orderReference === confirmedOrder.orderReference);
+    if (existingIdx >= 0) {
+      orders[existingIdx] = confirmedOrder;
+    } else {
+      orders.unshift(confirmedOrder);
+    }
     this.set(STORAGE_KEYS.ORDERS, orders);
 
-    // Update stock quantities for products
     const products = this.getProducts();
-    for (const item of newOrder.items) {
-      const pIdx = products.findIndex(p => p.id === item.productId);
+    for (const item of confirmedOrder.items) {
+      const pIdx = products.findIndex(p => p.id === item.productId || p.name === item.productName);
       if (pIdx >= 0) {
         products[pIdx].stockQuantity = Math.max(0, products[pIdx].stockQuantity - item.quantity);
       }
     }
     this.set(STORAGE_KEYS.PRODUCTS, products);
 
-    // Sync to Supabase orders table
-    if (supabase) {
-      Promise.resolve(
-        supabase
-          .from('orders')
-          .insert({
-            order_reference: newOrder.orderReference,
-            customer_name: newOrder.customerName,
-            customer_phone: newOrder.customerPhone,
-            customer_email: newOrder.customerEmail || null,
-            delivery_location: newOrder.deliveryLocation,
-            delivery_address: newOrder.deliveryAddress,
-            delivery_method: newOrder.deliveryMethod,
-            delivery_fee: newOrder.deliveryFee,
-            subtotal: newOrder.subtotal,
-            total_amount: newOrder.totalAmount,
-            currency: newOrder.currency,
-            order_status: newOrder.orderStatus,
-            payment_status: newOrder.paymentStatus,
-            customer_notes: newOrder.customerNotes || null
-          })
-      )
-        .then(({ error }: any) => {
-          if (error) console.info('Supabase order sync note:', error.message);
-        })
-        .catch(() => {});
+    return confirmedOrder;
+  }
+
+  async submitCheckoutOrder(payload: {
+    customerName: string;
+    customerPhone: string;
+    customerEmail?: string;
+    deliveryLocation: string;
+    deliveryAddress: string;
+    deliveryMethod: 'Delivery' | 'Pickup';
+    customerNotes?: string;
+    clientRequestId: string;
+    items: Array<{
+      productId: string;
+      slug: string;
+      variantId?: string;
+      variantName?: string;
+      variantValue?: string;
+      quantity: number;
+      imageUrl?: string;
+    }>;
+  }): Promise<Order> {
+    const res = await fetch('/api/orders/checkout', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        customerName: payload.customerName,
+        customerPhone: payload.customerPhone,
+        customerEmail: payload.customerEmail,
+        deliveryLocation: payload.deliveryLocation,
+        deliveryAddress: payload.deliveryAddress,
+        deliveryMethod: payload.deliveryMethod,
+        customerNotes: payload.customerNotes,
+        clientRequestId: payload.clientRequestId,
+        items: payload.items.map(i => ({
+          productId: i.productId,
+          slug: i.slug,
+          variantId: i.variantId,
+          variantName: i.variantName,
+          variantValue: i.variantValue,
+          quantity: i.quantity
+        }))
+      })
+    });
+
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data?.success || !data?.order) {
+      throw new Error(data?.error || 'Unable to process your order. Please review your bag and try again.');
     }
 
-    return newOrder;
+    const imageByProductId = new Map<string, string>();
+    for (const reqItem of payload.items) {
+      if (reqItem.productId && reqItem.imageUrl) {
+        imageByProductId.set(reqItem.productId, reqItem.imageUrl);
+      }
+    }
+
+    const confirmedOrder: Order = {
+      id: data.order.id,
+      orderReference: data.order.orderReference,
+      customerId: data.order.customerId,
+      customerName: data.order.customerName,
+      customerPhone: data.order.customerPhone,
+      customerEmail: data.order.customerEmail || undefined,
+      deliveryLocation: data.order.deliveryLocation,
+      deliveryAddress: data.order.deliveryAddress,
+      deliveryMethod: data.order.deliveryMethod,
+      deliveryFee: Number(data.order.deliveryFee || 0),
+      subtotal: Number(data.order.subtotal || 0),
+      totalAmount: Number(data.order.totalAmount || 0),
+      currency: data.order.currency || '$',
+      orderStatus: data.order.orderStatus || 'Confirmed',
+      paymentStatus: data.order.paymentStatus || 'Pending Verification',
+      customerNotes: data.order.customerNotes || undefined,
+      items: Array.isArray(data.order.items)
+        ? data.order.items.map((item: any) => ({
+            id: item.id,
+            orderId: item.orderId || data.order.id,
+            productId: item.productId || '',
+            productName: item.productName,
+            selectedVariant: item.selectedVariant || undefined,
+            quantity: Number(item.quantity || 1),
+            unitPrice: Number(item.unitPrice || 0),
+            subtotal: Number(item.subtotal || 0),
+            imageUrl: imageByProductId.get(item.productId) || undefined
+          }))
+        : [],
+      createdAt: data.order.createdAt || new Date().toISOString(),
+      updatedAt: data.order.updatedAt || new Date().toISOString()
+    };
+
+    return this.recordConfirmedOrderLocally(confirmedOrder);
+  }
+
+  async lookupOrderByReference(orderReference: string, customerPhone: string): Promise<Order | null> {
+    const cleanRef = orderReference.trim().toUpperCase();
+    const cleanDigits = customerPhone.replace(/\D/g, '');
+    if (cleanRef.length < 6 || cleanDigits.length < 7) return null;
+
+    const res = await fetch('/api/orders/lookup', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        orderReference: cleanRef,
+        customerPhone: customerPhone.trim()
+      })
+    });
+
+    const data = await res.json().catch(() => ({}));
+
+    if (res.status === 429) {
+      throw new Error(data?.error || 'Too many lookup attempts. Please wait and try again later.');
+    }
+
+    if (res.status >= 500) {
+      throw new Error(
+        data?.error || 'Order tracking service is temporarily unavailable. Please try again shortly.'
+      );
+    }
+
+    if (res.ok && data?.success && data?.order) {
+      return {
+        id: data.order.orderReference,
+        orderReference: data.order.orderReference,
+        customerName: 'Verified Customer',
+        customerPhone: 'Protected',
+        deliveryLocation: data.order.deliveryLocation,
+        deliveryAddress: 'Protected until courier dispatch',
+        deliveryMethod: data.order.deliveryMethod,
+        deliveryFee: Number(data.order.deliveryFee || 0),
+        subtotal: Number(data.order.subtotal || 0),
+        totalAmount: Number(data.order.totalAmount || 0),
+        currency: data.order.currency || '$',
+        orderStatus: data.order.orderStatus,
+        paymentStatus: data.order.paymentStatus,
+        items: Array.isArray(data.order.items)
+          ? data.order.items.map((item: any, idx: number) => ({
+              id: `track-item-${idx}`,
+              orderId: data.order.orderReference,
+              productId: '',
+              productName: item.productName,
+              selectedVariant: item.selectedVariant || undefined,
+              quantity: Number(item.quantity || 1),
+              unitPrice: Number(item.unitPrice || 0),
+              subtotal: Number(item.subtotal || 0)
+            }))
+          : [],
+        createdAt: data.order.createdAt,
+        updatedAt: data.order.updatedAt
+      };
+    }
+
+    return null;
+  }
+
+  async syncAdminOrdersFromSupabase(): Promise<Order[]> {
+    const localOrders = this.getOrders();
+    if (!supabase) return localOrders;
+    try {
+      const { data, error } = await supabase
+        .from('orders')
+        .select('*, order_items(*)')
+        .order('created_at', { ascending: false });
+
+      if (!error && Array.isArray(data) && data.length > 0) {
+        const mapped: Order[] = data.map((row: any) => ({
+          id: row.id,
+          orderReference: row.order_reference,
+          customerId: row.customer_id || undefined,
+          customerName: row.customer_name,
+          customerPhone: row.customer_phone,
+          customerEmail: row.customer_email || undefined,
+          deliveryLocation: row.delivery_location,
+          deliveryAddress: row.delivery_address,
+          deliveryMethod: row.delivery_method,
+          deliveryFee: Number(row.delivery_fee || 0),
+          subtotal: Number(row.subtotal || 0),
+          totalAmount: Number(row.total_amount || 0),
+          currency: row.currency || '$',
+          orderStatus: row.order_status,
+          paymentStatus: row.payment_status,
+          customerNotes: row.customer_notes || undefined,
+          items: Array.isArray(row.order_items)
+            ? row.order_items.map((item: any) => ({
+                id: item.id,
+                orderId: item.order_id || row.id,
+                productId: item.product_id || '',
+                productName: item.product_name,
+                selectedVariant: item.selected_variant || undefined,
+                quantity: Number(item.quantity || 1),
+                unitPrice: Number(item.unit_price || 0),
+                subtotal: Number(item.subtotal || 0)
+              }))
+            : [],
+          createdAt: row.created_at,
+          updatedAt: row.updated_at || row.created_at
+        }));
+        this.set(STORAGE_KEYS.ORDERS, mapped);
+        return mapped;
+      }
+    } catch {
+      // Keep local orders if admin Supabase Auth session is unavailable
+    }
+    return localOrders;
   }
 
   updateOrderStatus(orderId: string, status: Order['orderStatus'], paymentStatus?: Order['paymentStatus']): Order | undefined {
@@ -669,12 +1111,16 @@ class StoreRepository {
       orders[index].updatedAt = new Date().toISOString();
       this.set(STORAGE_KEYS.ORDERS, orders);
 
-      // Sync status change to Supabase
+      // Sync status change to Supabase (requires authenticated NOVALUXE admin session)
       if (supabase) {
+        const updatePayload: Record<string, any> = { order_status: status };
+        if (paymentStatus) {
+          updatePayload.payment_status = paymentStatus;
+        }
         Promise.resolve(
           supabase
             .from('orders')
-            .update({ order_status: status })
+            .update(updatePayload)
             .eq('order_reference', orders[index].orderReference)
         )
           .then(() => {})
@@ -689,6 +1135,35 @@ class StoreRepository {
   // Enquiries
   getEnquiries(): Enquiry[] {
     return this.get<Enquiry[]>(STORAGE_KEYS.ENQUIRIES, INITIAL_ENQUIRIES);
+  }
+
+  async syncAdminEnquiriesFromSupabase(): Promise<Enquiry[]> {
+    const localEnquiries = this.getEnquiries();
+    if (!supabase) return localEnquiries;
+    try {
+      const { data, error } = await supabase
+        .from('enquiries')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (!error && Array.isArray(data) && data.length > 0) {
+        const mapped: Enquiry[] = data.map((row: any) => ({
+          id: row.id,
+          fullName: row.full_name,
+          phone: row.phone,
+          email: row.email || undefined,
+          subject: row.subject,
+          message: row.message,
+          status: row.status || 'New',
+          createdAt: row.created_at
+        }));
+        this.set(STORAGE_KEYS.ENQUIRIES, mapped);
+        return mapped;
+      }
+    } catch {
+      // Keep local enquiries when offline
+    }
+    return localEnquiries;
   }
 
   createEnquiry(enquiry: Omit<Enquiry, 'id' | 'createdAt' | 'status'>): Enquiry {
@@ -731,6 +1206,11 @@ class StoreRepository {
     if (index >= 0) {
       list[index].status = status;
       this.set(STORAGE_KEYS.ENQUIRIES, list);
+      if (supabase) {
+        Promise.resolve(
+          supabase.from('enquiries').update({ status }).eq('id', id)
+        ).catch(() => {});
+      }
     }
   }
 

@@ -114,23 +114,23 @@ export const ShopPage: React.FC<ShopPageProps> = ({
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 space-y-8">
       {/* Page Title & Breadcrumb */}
-      <div className="border-b border-[#261B36] pb-6">
-        <h1 className="text-3xl sm:text-4xl font-serif font-bold text-[#F3EFEA]">
+      <div className="border-b border-[#E4DDD0] dark:border-[#261B36] pb-6">
+        <h1 className="text-3xl sm:text-4xl font-serif font-bold text-[#211B25] dark:text-[#F3EFEA]">
           Shop All Beauty & Essentials
         </h1>
-        <p className="text-xs text-[#9C8EB2] mt-1.5">
+        <p className="text-xs text-[#746B78] dark:text-[#9C8EB2] mt-1.5">
           Carefully selected cosmetics, skincare, fragrances, and personal care in Monrovia, Liberia.
         </p>
       </div>
 
-      {/* Category Pills (Functional Tab Bar) */}
+      {/* Category Filter Tabs */}
       <div className="flex items-center gap-2 overflow-x-auto pb-2 scrollbar-none">
         <button
           onClick={() => setSelectedCategory('all')}
           className={`px-4 py-2 rounded-xl text-xs font-medium whitespace-nowrap transition-colors cursor-pointer ${
             selectedCategory === 'all'
-              ? 'bg-[#F5D061] text-[#0A0710] font-semibold shadow-md'
-              : 'bg-[#181124] text-[#C5B9D8] hover:bg-[#251A38] hover:text-[#FFFFFF] border border-[#2E2044]'
+              ? 'bg-[#8B42C9] dark:bg-[#F5D061] text-white dark:text-[#0A0710] font-semibold shadow-md'
+              : 'bg-[#F2EBDD] dark:bg-[#181124] text-[#211B25] dark:text-[#C5B9D8] hover:bg-[#EAE0CC] dark:hover:bg-[#251A38] border border-[#E4DDD0] dark:border-[#2E2044]'
           }`}
         >
           All Items ({products.length})
@@ -144,8 +144,8 @@ export const ShopPage: React.FC<ShopPageProps> = ({
               onClick={() => setSelectedCategory(cat.slug)}
               className={`px-4 py-2 rounded-xl text-xs font-medium whitespace-nowrap transition-colors cursor-pointer ${
                 isSelected
-                  ? 'bg-[#F5D061] text-[#0A0710] font-semibold shadow-md'
-                  : 'bg-[#181124] text-[#C5B9D8] hover:bg-[#251A38] hover:text-[#FFFFFF] border border-[#2E2044]'
+                  ? 'bg-[#8B42C9] dark:bg-[#F5D061] text-white dark:text-[#0A0710] font-semibold shadow-md'
+                  : 'bg-[#F2EBDD] dark:bg-[#181124] text-[#211B25] dark:text-[#C5B9D8] hover:bg-[#EAE0CC] dark:hover:bg-[#251A38] border border-[#E4DDD0] dark:border-[#2E2044]'
               }`}
             >
               {cat.name} ({count})
@@ -155,21 +155,21 @@ export const ShopPage: React.FC<ShopPageProps> = ({
       </div>
 
       {/* Control Bar: Search, Mobile Filter Toggle, Sort Dropdown */}
-      <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4 bg-[#120D1B] p-4 rounded-2xl border border-[#261B36]">
+      <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4 bg-[#F2EBDD] dark:bg-[#120D1B] p-4 rounded-2xl border border-[#E4DDD0] dark:border-[#261B36]">
         {/* Search Input */}
         <div className="relative flex-1 max-w-md">
-          <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-[#8C829B]" />
+          <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-[#746B78] dark:text-[#8C829B]" />
           <input
             type="text"
             value={searchQuery}
             onChange={e => setSearchQuery(e.target.value)}
             placeholder="Search by product name, description or SKU..."
-            className="w-full pl-10 pr-4 py-2.5 bg-[#1A1227] border border-[#34244C] rounded-xl text-xs text-[#F3EFEA] placeholder-[#8C829B] focus:outline-none focus:border-[#A855F7]"
+            className="w-full pl-10 pr-4 py-2.5 bg-white dark:bg-[#1A1227] border border-[#E4DDD0] dark:border-[#34244C] rounded-xl text-xs text-[#211B25] dark:text-[#F3EFEA] placeholder-[#746B78] dark:placeholder-[#8C829B] focus:outline-none focus:border-[#8B42C9] dark:focus:border-[#A855F7]"
           />
           {searchQuery && (
             <button
               onClick={() => setSearchQuery('')}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-[#8C829B] hover:text-[#F3EFEA]"
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-[#746B78] dark:text-[#8C829B] hover:text-[#211B25] dark:hover:text-[#F3EFEA]"
             >
               <X className="w-3.5 h-3.5" />
             </button>
@@ -181,24 +181,24 @@ export const ShopPage: React.FC<ShopPageProps> = ({
           {/* Mobile Filter Toggle */}
           <button
             onClick={() => setShowFiltersMobile(!showFiltersMobile)}
-            className="lg:hidden px-3.5 py-2.5 rounded-xl bg-[#1A1227] border border-[#34244C] text-xs font-medium text-[#C5B9D8] flex items-center gap-1.5"
+            className="lg:hidden px-3.5 py-2.5 rounded-xl bg-white dark:bg-[#1A1227] border border-[#E4DDD0] dark:border-[#34244C] text-xs font-medium text-[#211B25] dark:text-[#C5B9D8] flex items-center gap-1.5"
           >
-            <Filter className="w-3.5 h-3.5 text-[#F5D061]" />
+            <Filter className="w-3.5 h-3.5 text-[#C99A35] dark:text-[#F5D061]" />
             <span>Filters</span>
             {hasActiveFilters && (
-              <span className="w-2 h-2 rounded-full bg-[#F5D061]" />
+              <span className="w-2 h-2 rounded-full bg-[#8B42C9] dark:bg-[#F5D061]" />
             )}
           </button>
 
           {/* Sort Selector */}
           <div className="flex items-center gap-2">
-            <span className="text-xs text-[#8C829B] hidden sm:inline whitespace-nowrap">
+            <span className="text-xs text-[#746B78] dark:text-[#8C829B] hidden sm:inline whitespace-nowrap">
               Sort by:
             </span>
             <select
               value={sortBy}
               onChange={e => setSortBy(e.target.value as any)}
-              className="bg-[#1A1227] border border-[#34244C] text-xs text-[#E2D4B7] py-2.5 px-3 rounded-xl focus:outline-none focus:border-[#A855F7] cursor-pointer"
+              className="bg-white dark:bg-[#1A1227] border border-[#E4DDD0] dark:border-[#34244C] text-xs text-[#211B25] dark:text-[#E2D4B7] py-2.5 px-3 rounded-xl focus:outline-none focus:border-[#8B42C9] dark:focus:border-[#A855F7] cursor-pointer"
             >
               <option value="newest">Newest First</option>
               <option value="price-asc">Price: Low to High</option>
@@ -213,18 +213,18 @@ export const ShopPage: React.FC<ShopPageProps> = ({
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
         {/* Desktop Sidebar Filters */}
         <div className={`space-y-6 ${showFiltersMobile ? 'block' : 'hidden lg:block'}`}>
-          <div className="bg-[#120D1B] rounded-2xl border border-[#261B36] p-5 space-y-6">
-            <div className="flex items-center justify-between border-b border-[#261B36] pb-3">
+          <div className="bg-white dark:bg-[#120D1B] rounded-2xl border border-[#E4DDD0] dark:border-[#261B36] p-5 space-y-6">
+            <div className="flex items-center justify-between border-b border-[#E4DDD0] dark:border-[#261B36] pb-3">
               <div className="flex items-center gap-2">
-                <SlidersHorizontal className="w-4 h-4 text-[#A855F7]" />
-                <h3 className="text-sm font-semibold text-[#F3EFEA] uppercase tracking-wider">
+                <SlidersHorizontal className="w-4 h-4 text-[#8B42C9] dark:text-[#A855F7]" />
+                <h3 className="text-sm font-semibold text-[#211B25] dark:text-[#F3EFEA] uppercase tracking-wider">
                   Filters
                 </h3>
               </div>
               {hasActiveFilters && (
                 <button
                   onClick={clearAllFilters}
-                  className="text-xs text-[#F5D061] hover:underline"
+                  className="text-xs text-[#C99A35] dark:text-[#F5D061] hover:underline"
                 >
                   Reset
                 </button>
@@ -233,47 +233,47 @@ export const ShopPage: React.FC<ShopPageProps> = ({
 
             {/* Availability & Highlights Checkboxes */}
             <div className="space-y-3">
-              <h4 className="text-xs font-semibold uppercase tracking-wider text-[#9C8EB2]">
+              <h4 className="text-xs font-semibold uppercase tracking-wider text-[#746B78] dark:text-[#9C8EB2]">
                 Availability & Tags
               </h4>
-              <label className="flex items-center gap-2.5 text-xs text-[#C5B9D8] cursor-pointer hover:text-[#FFFFFF]">
+              <label className="flex items-center gap-2.5 text-xs text-[#211B25] dark:text-[#C5B9D8] cursor-pointer hover:text-[#8B42C9] dark:hover:text-[#FFFFFF]">
                 <input
                   type="checkbox"
                   checked={onlyInStock}
                   onChange={e => setOnlyInStock(e.target.checked)}
-                  className="rounded bg-[#1A1227] border-[#34244C] text-[#A855F7] focus:ring-0"
+                  className="rounded accent-[#8B42C9] dark:accent-[#A855F7]"
                 />
                 <span>In Stock only</span>
               </label>
 
-              <label className="flex items-center gap-2.5 text-xs text-[#C5B9D8] cursor-pointer hover:text-[#FFFFFF]">
+              <label className="flex items-center gap-2.5 text-xs text-[#211B25] dark:text-[#C5B9D8] cursor-pointer hover:text-[#8B42C9] dark:hover:text-[#FFFFFF]">
                 <input
                   type="checkbox"
                   checked={onlyNewArrivals}
                   onChange={e => setOnlyNewArrivals(e.target.checked)}
-                  className="rounded bg-[#1A1227] border-[#34244C] text-[#A855F7] focus:ring-0"
+                  className="rounded accent-[#8B42C9] dark:accent-[#A855F7]"
                 />
                 <span>New Arrivals only</span>
               </label>
 
-              <label className="flex items-center gap-2.5 text-xs text-[#C5B9D8] cursor-pointer hover:text-[#FFFFFF]">
+              <label className="flex items-center gap-2.5 text-xs text-[#211B25] dark:text-[#C5B9D8] cursor-pointer hover:text-[#8B42C9] dark:hover:text-[#FFFFFF]">
                 <input
                   type="checkbox"
                   checked={onlyFeatured}
                   onChange={e => setOnlyFeatured(e.target.checked)}
-                  className="rounded bg-[#1A1227] border-[#34244C] text-[#A855F7] focus:ring-0"
+                  className="rounded accent-[#8B42C9] dark:accent-[#A855F7]"
                 />
                 <span>Featured items only</span>
               </label>
             </div>
 
             {/* Price Range Slider */}
-            <div className="space-y-3 pt-3 border-t border-[#261B36]">
+            <div className="space-y-3 pt-3 border-t border-[#E4DDD0] dark:border-[#261B36]">
               <div className="flex items-center justify-between text-xs">
-                <span className="font-semibold uppercase tracking-wider text-[#9C8EB2]">
+                <span className="font-semibold uppercase tracking-wider text-[#746B78] dark:text-[#9C8EB2]">
                   Max Price
                 </span>
-                <span className="font-semibold text-[#F5D061] tabular-nums">
+                <span className="font-semibold text-[#C99A35] dark:text-[#F5D061] tabular-nums">
                   {settings.currency}{priceMax}
                 </span>
               </div>
@@ -284,9 +284,9 @@ export const ShopPage: React.FC<ShopPageProps> = ({
                 step="5"
                 value={priceMax}
                 onChange={e => setPriceMax(Number(e.target.value))}
-                className="w-full accent-[#F5D061] cursor-pointer"
+                className="w-full accent-[#8B42C9] dark:accent-[#F5D061] cursor-pointer"
               />
-              <div className="flex justify-between text-[11px] text-[#8C829B]">
+              <div className="flex justify-between text-[11px] text-[#746B78] dark:text-[#8C829B]">
                 <span>{settings.currency}10</span>
                 <span>{settings.currency}100+</span>
               </div>
@@ -297,26 +297,26 @@ export const ShopPage: React.FC<ShopPageProps> = ({
         {/* Product Catalogue Grid */}
         <div className="lg:col-span-3">
           {filteredProducts.length === 0 ? (
-            <div className="bg-[#120D1B] rounded-2xl border border-[#261B36] p-12 text-center space-y-4">
-              <h3 className="text-lg font-serif font-semibold text-[#F3EFEA]">
+            <div className="bg-white dark:bg-[#120D1B] rounded-2xl border border-[#E4DDD0] dark:border-[#261B36] p-12 text-center space-y-4">
+              <h3 className="text-lg font-serif font-semibold text-[#211B25] dark:text-[#F3EFEA]">
                 No matching products found
               </h3>
-              <p className="text-xs text-[#9C8EB2] max-w-sm mx-auto">
+              <p className="text-xs text-[#746B78] dark:text-[#9C8EB2] max-w-sm mx-auto">
                 No items match your active filters or search terms. Try adjusting your query or clear filters to see the full catalogue.
               </p>
               <button
                 onClick={clearAllFilters}
-                className="px-5 py-2.5 rounded-xl bg-[#F5D061] text-[#0A0710] font-semibold text-xs tracking-wider uppercase transition-colors"
+                className="px-5 py-2.5 rounded-xl bg-[#8B42C9] dark:bg-[#F5D061] text-white dark:text-[#0A0710] font-semibold text-xs tracking-wider uppercase transition-colors cursor-pointer"
               >
                 Clear All Filters
               </button>
             </div>
           ) : (
             <div className="space-y-6">
-              <div className="flex items-center justify-between text-xs text-[#9C8EB2] px-1">
+              <div className="flex items-center justify-between text-xs text-[#746B78] dark:text-[#9C8EB2] px-1">
                 <span>Showing {filteredProducts.length} items</span>
                 {selectedCategory !== 'all' && (
-                  <span className="text-[#F5D061] font-medium">
+                  <span className="text-[#8B42C9] dark:text-[#F5D061] font-medium">
                     Category: {categories.find(c => c.slug === selectedCategory)?.name}
                   </span>
                 )}

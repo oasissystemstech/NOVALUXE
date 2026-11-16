@@ -9,9 +9,11 @@ interface AdminUser {
 
 interface AuthContextType {
   isAdmin: boolean;
+  isAuthLoading: boolean;
   adminUser: AdminUser | null;
   login: (email: string, pass: string) => Promise<{ success: boolean; error?: string }>;
-  logout: () => void;
+  logout: () => Promise<void>;
+  getAuthToken: () => Promise<string | null>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -19,15 +21,27 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 const ADMIN_SESSION_USER_KEY = 'novaluxe_admin_user_session';
 const ADMIN_SESSION_TOKEN_KEY = 'novaluxe_admin_auth_token';
 
-export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [adminUser, setAdminUser] = useState<AdminUser | null>(() => {
-    try {
-      const saved = sessionStorage.getItem(ADMIN_SESSION_USER_KEY);
-      return saved ? JSON.parse(saved) : null;
-    } catch {
-      return null;
+async function verifySupabaseAdminProfile(userId: string): Promise<'admin' | 'super_admin' | null> {
+  if (!isSupabaseConfigured || !supabase || !userId) return null;
+  try {
+    const { data, error } = await supabase
+      .from('admin_profiles')
+      .select('role')
+      .eq('user_id', userId)
+      .maybeSingle();
+
+    if (!error && data && (data.role === 'admin' || data.role === 'super_admin')) {
+      return data.role;
     }
-  });
+  } catch {
+    // admin_profiles lookup failed or not authorized
+  }
+  return null;
+}
+
+export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const [adminUser, setAdminUser] = useState<AdminUser | null>(null);
+  const [isAuthLoading, setIsAuthLoading] = useState<boolean>(true);
 
   const clearSession = useCallback(() => {
     setAdminUser(null);
@@ -37,52 +51,73 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } catch {}
   }, []);
 
-  // Check and verify existing session on mount
+  // Check and verify existing session on mount before granting any admin UI access
   useEffect(() => {
     let isMounted = true;
 
     async function verifyExistingSession() {
-      // 1. If Supabase is configured, check Supabase Auth session first
-      if (isSupabaseConfigured && supabase) {
-        try {
-          const { data } = await supabase.auth.getSession();
-          if (data.session?.user && isMounted) {
-            setAdminUser({
-              id: data.session.user.id,
-              email: data.session.user.email || 'administrator',
-              role: 'admin'
-            });
-            return;
+      try {
+        // 1. Check Supabase Auth session ONLY if user has an authorized admin_profiles record
+        if (isSupabaseConfigured && supabase) {
+          try {
+            const { data } = await supabase.auth.getSession();
+            if (data.session?.user && isMounted) {
+              const adminRole = await verifySupabaseAdminProfile(data.session.user.id);
+              if (adminRole && isMounted) {
+                const verifiedUser: AdminUser = {
+                  id: data.session.user.id,
+                  email: data.session.user.email || 'administrator',
+                  role: adminRole
+                };
+                setAdminUser(verifiedUser);
+                try {
+                  sessionStorage.setItem(ADMIN_SESSION_USER_KEY, JSON.stringify(verifiedUser));
+                } catch {}
+                return;
+              }
+              // Clear unprivileged Supabase session
+              await supabase.auth.signOut().catch(() => {});
+            }
+          } catch {
+            // Continue to backend token verification
           }
-        } catch {
-          // Continue to token verification
         }
-      }
 
-      // 2. Check backend session token
-      const token = sessionStorage.getItem(ADMIN_SESSION_TOKEN_KEY);
-      if (token && isMounted) {
+        // 2. Check backend HMAC session token against /api/admin/verify
+        let token: string | null = null;
         try {
-          const res = await fetch('/api/admin/verify', {
-            method: 'GET',
-            headers: {
-              Authorization: `Bearer ${token}`
+          token = sessionStorage.getItem(ADMIN_SESSION_TOKEN_KEY);
+        } catch {}
+
+        if (token && isMounted) {
+          try {
+            const res = await fetch('/api/admin/verify', {
+              method: 'GET',
+              headers: {
+                Authorization: `Bearer ${token}`
+              }
+            });
+            if (res.ok) {
+              const data = await res.json();
+              if (data.valid && data.user && isMounted) {
+                setAdminUser(data.user);
+                try {
+                  sessionStorage.setItem(ADMIN_SESSION_USER_KEY, JSON.stringify(data.user));
+                } catch {}
+                return;
+              }
             }
-          });
-          if (res.ok) {
-            const data = await res.json();
-            if (data.valid && data.user && isMounted) {
-              setAdminUser(data.user);
-              sessionStorage.setItem(ADMIN_SESSION_USER_KEY, JSON.stringify(data.user));
-              return;
-            }
+          } catch {
+            // Verification failed
           }
-          // If token verification returned 401 or invalid, clear invalid session
-          if (isMounted) {
-            clearSession();
-          }
-        } catch {
-          // If network error, preserve existing session if present, but do not throw
+        }
+
+        if (isMounted) {
+          clearSession();
+        }
+      } finally {
+        if (isMounted) {
+          setIsAuthLoading(false);
         }
       }
     }
@@ -93,21 +128,39 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (isSupabaseConfigured && supabase) {
       const {
         data: { subscription }
-      } = supabase.auth.onAuthStateChange((_event, session) => {
+      } = supabase.auth.onAuthStateChange(async (_event, session) => {
         if (!isMounted) return;
         if (session?.user) {
-          const user: AdminUser = {
-            id: session.user.id,
-            email: session.user.email || 'administrator',
-            role: 'admin'
-          };
-          setAdminUser(user);
+          const adminRole = await verifySupabaseAdminProfile(session.user.id);
+          if (!isMounted) return;
+          if (adminRole) {
+            const user: AdminUser = {
+              id: session.user.id,
+              email: session.user.email || 'administrator',
+              role: adminRole
+            };
+            setAdminUser(user);
+            try {
+              sessionStorage.setItem(ADMIN_SESSION_USER_KEY, JSON.stringify(user));
+            } catch {}
+          } else {
+            await supabase?.auth.signOut().catch(() => {});
+            let hasBackendToken = false;
+            try {
+              hasBackendToken = Boolean(sessionStorage.getItem(ADMIN_SESSION_TOKEN_KEY));
+            } catch {}
+            if (!hasBackendToken && isMounted) {
+              setAdminUser(null);
+            }
+          }
+        } else {
+          let hasBackendToken = false;
           try {
-            sessionStorage.setItem(ADMIN_SESSION_USER_KEY, JSON.stringify(user));
+            hasBackendToken = Boolean(sessionStorage.getItem(ADMIN_SESSION_TOKEN_KEY));
           } catch {}
-        } else if (!sessionStorage.getItem(ADMIN_SESSION_TOKEN_KEY)) {
-          // No Supabase session and no backend token
-          setAdminUser(null);
+          if (!hasBackendToken && isMounted) {
+            setAdminUser(null);
+          }
         }
       });
 
@@ -128,7 +181,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return { success: false, error: 'Please enter both username/email and password.' };
     }
 
-    // 1. Try Supabase Auth first if configured and user entered an email
+    // 1. Try Supabase Auth first if configured and user entered an email, requiring admin_profiles verification
     if (isSupabaseConfigured && supabase && trimmed.includes('@')) {
       try {
         const { data, error } = await supabase.auth.signInWithPassword({
@@ -136,16 +189,25 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           password: pass
         });
         if (!error && data?.user) {
-          const user: AdminUser = {
-            id: data.user.id,
-            email: data.user.email || trimmed,
-            role: 'admin'
+          const adminRole = await verifySupabaseAdminProfile(data.user.id);
+          if (adminRole) {
+            const user: AdminUser = {
+              id: data.user.id,
+              email: data.user.email || trimmed,
+              role: adminRole
+            };
+            setAdminUser(user);
+            try {
+              sessionStorage.setItem(ADMIN_SESSION_USER_KEY, JSON.stringify(user));
+            } catch {}
+            return { success: true };
+          }
+          // Authenticated in Supabase Auth, but NOT listed in admin_profiles
+          await supabase.auth.signOut().catch(() => {});
+          return {
+            success: false,
+            error: 'This account does not have NOVALUXE administrator privileges in admin_profiles.'
           };
-          setAdminUser(user);
-          try {
-            sessionStorage.setItem(ADMIN_SESSION_USER_KEY, JSON.stringify(user));
-          } catch {}
-          return { success: true };
         }
       } catch {
         // Fall back to serverless admin auth endpoint
@@ -174,6 +236,36 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           sessionStorage.setItem(ADMIN_SESSION_USER_KEY, JSON.stringify(data.user));
           sessionStorage.setItem(ADMIN_SESSION_TOKEN_KEY, data.token);
         } catch {}
+
+        // Also establish Supabase Auth session in background (for RLS-protected Storage/DB writes)
+        if (isSupabaseConfigured && supabase && data.supabaseEmail) {
+          try {
+            const expectedEmail = String(data.supabaseEmail).trim().toLowerCase();
+            const { data: sessionData } = await supabase.auth.getSession();
+            const existingUser = sessionData.session?.user;
+            let reuseExisting = false;
+
+            if (existingUser) {
+              const sameEmail = (existingUser.email || '').trim().toLowerCase() === expectedEmail;
+              const existingRole = sameEmail ? await verifySupabaseAdminProfile(existingUser.id) : null;
+              if (sameEmail && existingRole) {
+                reuseExisting = true;
+              } else {
+                await supabase.auth.signOut().catch(() => {});
+              }
+            }
+
+            if (!reuseExisting) {
+              await supabase.auth.signInWithPassword({
+                email: expectedEmail,
+                password: pass
+              });
+            }
+          } catch {
+            // Non-blocking: backend HMAC session remains active even if Supabase Auth user isn't provisioned yet
+          }
+        }
+
         return { success: true };
       }
 
@@ -190,21 +282,40 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const logout = async () => {
+    clearSession();
     if (isSupabaseConfigured && supabase) {
       try {
         await supabase.auth.signOut();
       } catch {}
     }
-    clearSession();
   };
+
+  const getAuthToken = useCallback(async (): Promise<string | null> => {
+    try {
+      const token = sessionStorage.getItem(ADMIN_SESSION_TOKEN_KEY);
+      if (token) return token;
+    } catch {}
+
+    if (isSupabaseConfigured && supabase) {
+      try {
+        const { data } = await supabase.auth.getSession();
+        if (data.session?.access_token) {
+          return data.session.access_token;
+        }
+      } catch {}
+    }
+    return null;
+  }, []);
 
   return (
     <AuthContext.Provider
       value={{
         isAdmin: Boolean(adminUser),
+        isAuthLoading,
         adminUser,
         login,
-        logout
+        logout,
+        getAuthToken
       }}
     >
       {children}

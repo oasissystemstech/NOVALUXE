@@ -65,7 +65,7 @@ export const HomePage: React.FC<HomePageProps> = ({
   return (
     <div className="space-y-20 pb-20">
       {/* 1. HERO SECTION */}
-      <section className="relative min-h-[580px] lg:min-h-[640px] flex items-center bg-[#0C0813] border-b border-[#231735] overflow-hidden">
+      <section className="relative min-h-[580px] lg:min-h-[640px] flex items-center bg-[#181024] dark:bg-[#0C0813] border-b border-[#E4DDD0] dark:border-[#231735] overflow-hidden">
         {/* Background Image with Measured Luxury Scrim */}
         <div className="absolute inset-0">
           <img
@@ -75,8 +75,8 @@ export const HomePage: React.FC<HomePageProps> = ({
             referrerPolicy="no-referrer"
             onError={(e) => handleImageError(e, DEFAULT_HERO_IMAGE)}
           />
-          <div className="absolute inset-0 bg-gradient-to-r from-[#0C0813] via-[#0C0813]/85 to-transparent" />
-          <div className="absolute inset-0 bg-gradient-to-t from-[#0C0813] via-transparent to-black/30" />
+          <div className="absolute inset-0 bg-gradient-to-r from-[#120B1D] via-[#120B1D]/85 to-transparent dark:from-[#0C0813] dark:via-[#0C0813]/85" />
+          <div className="absolute inset-0 bg-gradient-to-t from-[#120B1D] via-transparent to-black/30 dark:from-[#0C0813]" />
         </div>
 
         {/* Hero Content */}
@@ -98,7 +98,7 @@ export const HomePage: React.FC<HomePageProps> = ({
             <div className="pt-2 flex flex-wrap items-center gap-4">
               <button
                 onClick={() => onNavigate('/shop')}
-                className="px-7 py-3.5 rounded-xl bg-gradient-to-r from-[#A855F7] via-[#C084FC] to-[#D97706] hover:opacity-95 text-[#0A0710] font-semibold text-sm tracking-wide flex items-center gap-2 shadow-xl hover:shadow-2xl hover:scale-[1.02] transition-all cursor-pointer"
+                className="px-7 py-3.5 rounded-xl bg-gradient-to-r from-[#8B42C9] via-[#A855F7] to-[#C99A35] dark:from-[#A855F7] dark:via-[#C084FC] dark:to-[#D97706] hover:opacity-95 text-white dark:text-[#0A0710] font-semibold text-sm tracking-wide flex items-center gap-2 shadow-xl hover:shadow-2xl hover:scale-[1.02] transition-all cursor-pointer"
               >
                 <ShoppingBag className="w-4 h-4" />
                 <span>Shop Now</span>
@@ -112,13 +112,13 @@ export const HomePage: React.FC<HomePageProps> = ({
             </div>
 
             {/* Quick Regional Trust Marker */}
-            <div className="pt-4 flex items-center gap-6 text-xs text-[#9C8EB2]">
+            <div className="pt-4 flex flex-wrap items-center gap-6 text-xs text-[#C5B9D8]">
               <div className="flex items-center gap-2">
                 <CheckCircle className="w-4 h-4 text-[#F5D061]" />
                 <span>Monrovia Store Pickup Available</span>
               </div>
               <div className="flex items-center gap-2">
-                <Truck className="w-4 h-4 text-[#A855F7]" />
+                <Truck className="w-4 h-4 text-[#C084FC]" />
                 <span>Local Monrovia Delivery</span>
               </div>
             </div>
@@ -130,16 +130,16 @@ export const HomePage: React.FC<HomePageProps> = ({
       <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex flex-col sm:flex-row sm:items-end justify-between mb-8 gap-4">
           <div>
-            <p className="text-xs uppercase tracking-widest text-[#A855F7] font-semibold mb-1">
+            <p className="text-xs uppercase tracking-widest text-[#8B42C9] dark:text-[#A855F7] font-semibold mb-1">
               Curated Collections
             </p>
-            <h2 className="text-2xl sm:text-3xl font-serif font-bold text-[#F3EFEA]">
+            <h2 className="text-2xl sm:text-3xl font-serif font-bold text-[#211B25] dark:text-[#F3EFEA]">
               Explore by Category
             </h2>
           </div>
           <button
             onClick={() => onNavigate('/shop')}
-            className="text-xs font-semibold text-[#F5D061] hover:text-[#F3C543] flex items-center gap-1 group cursor-pointer"
+            className="text-xs font-semibold text-[#C99A35] dark:text-[#F5D061] hover:underline flex items-center gap-1 group cursor-pointer"
           >
             <span>View All Categories</span>
             <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
@@ -151,7 +151,7 @@ export const HomePage: React.FC<HomePageProps> = ({
             <div
               key={category.id}
               onClick={() => onNavigate('/shop', category.slug)}
-              className="group relative rounded-2xl overflow-hidden aspect-[4/5] bg-[#140D1F] border border-[#2B1D3E] hover:border-[#634887] transition-all duration-300 hover:-translate-y-1 hover:shadow-xl cursor-pointer"
+              className="group relative rounded-2xl overflow-hidden aspect-[4/5] bg-[#F2EBDD] dark:bg-[#140D1F] border border-[#E4DDD0] dark:border-[#2B1D3E] hover:border-[#8B42C9] dark:hover:border-[#634887] transition-all duration-300 hover:-translate-y-1 hover:shadow-xl cursor-pointer"
             >
               <img
                 src={category.imageUrl}
@@ -160,12 +160,12 @@ export const HomePage: React.FC<HomePageProps> = ({
                 onError={handleImageError}
                 className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-108"
               />
-              <div className="absolute inset-0 bg-gradient-to-t from-[#0C0813] via-[#0C0813]/40 to-transparent" />
+              <div className="absolute inset-0 bg-gradient-to-t from-[#0C0813]/95 via-[#0C0813]/40 to-transparent" />
               <div className="absolute bottom-0 inset-x-0 p-5 space-y-1">
                 <h3 className="text-lg font-serif font-semibold text-[#F3EFEA] group-hover:text-[#F5D061] transition-colors">
                   {category.name}
                 </h3>
-                <p className="text-xs text-[#C5B9D8] line-clamp-1">
+                <p className="text-xs text-[#D8CCE8] line-clamp-1">
                   {category.description}
                 </p>
                 <div className="pt-2 flex items-center text-xs font-medium text-[#F5D061] gap-1 group-hover:translate-x-1 transition-transform">
@@ -182,16 +182,16 @@ export const HomePage: React.FC<HomePageProps> = ({
       <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex flex-col sm:flex-row sm:items-end justify-between mb-8 gap-4">
           <div>
-            <p className="text-xs uppercase tracking-widest text-[#F5D061] font-semibold mb-1">
+            <p className="text-xs uppercase tracking-widest text-[#C99A35] dark:text-[#F5D061] font-semibold mb-1">
               Handpicked Selection
             </p>
-            <h2 className="text-2xl sm:text-3xl font-serif font-bold text-[#F3EFEA]">
+            <h2 className="text-2xl sm:text-3xl font-serif font-bold text-[#211B25] dark:text-[#F3EFEA]">
               Featured Essentials
             </h2>
           </div>
           <button
             onClick={() => onNavigate('/shop')}
-            className="text-xs font-semibold text-[#A855F7] hover:text-[#C084FC] flex items-center gap-1 group cursor-pointer"
+            className="text-xs font-semibold text-[#8B42C9] dark:text-[#A855F7] hover:underline flex items-center gap-1 group cursor-pointer"
           >
             <span>See Catalogue</span>
             <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
@@ -210,19 +210,19 @@ export const HomePage: React.FC<HomePageProps> = ({
       </section>
 
       {/* 4. EDITORIAL BRAND INTRODUCTION SECTION */}
-      <section className="bg-gradient-to-b from-[#110B1C] to-[#0D0916] border-y border-[#281C3B] py-16">
+      <section className="bg-[#F2EBDD] dark:bg-gradient-to-b dark:from-[#110B1C] dark:to-[#0D0916] border-y border-[#E4DDD0] dark:border-[#281C3B] py-16">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center space-y-6">
-          <div className="w-12 h-0.5 bg-gradient-to-r from-[#A855F7] to-[#EAB308] mx-auto rounded-full" />
-          <h2 className="text-2xl sm:text-4xl font-serif font-bold text-[#F3EFEA] tracking-tight leading-snug">
+          <div className="w-12 h-0.5 bg-gradient-to-r from-[#8B42C9] to-[#C99A35] dark:from-[#A855F7] dark:to-[#EAB308] mx-auto rounded-full" />
+          <h2 className="text-2xl sm:text-4xl font-serif font-bold text-[#211B25] dark:text-[#F3EFEA] tracking-tight leading-snug">
             Thoughtfully Curated for Your Everyday Beauty & Lifestyle
           </h2>
-          <p className="text-base text-[#C5B9D8] leading-relaxed max-w-2xl mx-auto">
+          <p className="text-base text-[#746B78] dark:text-[#C5B9D8] leading-relaxed max-w-2xl mx-auto">
             {settings.brandIntro}
           </p>
           <div className="pt-2">
             <button
               onClick={() => onNavigate('/about')}
-              className="inline-flex items-center gap-2 px-6 py-3 rounded-xl border border-[#4C3668] text-[#E2D4B7] hover:text-[#FFFFFF] hover:bg-[#1E142F] text-xs font-semibold uppercase tracking-wider transition-all cursor-pointer"
+              className="inline-flex items-center gap-2 px-6 py-3 rounded-xl border border-[#D4CBB8] dark:border-[#4C3668] bg-white dark:bg-transparent text-[#211B25] dark:text-[#E2D4B7] hover:text-[#8B42C9] dark:hover:text-[#FFFFFF] hover:bg-[#FAF8F4] dark:hover:bg-[#1E142F] text-xs font-semibold uppercase tracking-wider transition-all cursor-pointer"
             >
               <span>Discover Our Story & Values</span>
               <ArrowRight className="w-3.5 h-3.5" />
@@ -236,16 +236,16 @@ export const HomePage: React.FC<HomePageProps> = ({
         <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between mb-8">
             <div>
-              <p className="text-xs uppercase tracking-widest text-[#F5D061] font-semibold mb-1">
+              <p className="text-xs uppercase tracking-widest text-[#C99A35] dark:text-[#F5D061] font-semibold mb-1">
                 Just Arrived in Monrovia
               </p>
-              <h2 className="text-2xl sm:text-3xl font-serif font-bold text-[#F3EFEA]">
+              <h2 className="text-2xl sm:text-3xl font-serif font-bold text-[#211B25] dark:text-[#F3EFEA]">
                 New Arrivals
               </h2>
             </div>
             <button
               onClick={() => onNavigate('/shop')}
-              className="text-xs font-semibold text-[#A855F7] hover:text-[#C084FC] flex items-center gap-1 cursor-pointer"
+              className="text-xs font-semibold text-[#8B42C9] dark:text-[#A855F7] hover:underline flex items-center gap-1 cursor-pointer"
             >
               <span>View All</span>
               <ArrowRight className="w-3.5 h-3.5" />
@@ -269,16 +269,16 @@ export const HomePage: React.FC<HomePageProps> = ({
         <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between mb-8">
             <div>
-              <p className="text-xs uppercase tracking-widest text-[#A855F7] font-semibold mb-1">
+              <p className="text-xs uppercase tracking-widest text-[#8B42C9] dark:text-[#A855F7] font-semibold mb-1">
                 Most Loved
               </p>
-              <h2 className="text-2xl sm:text-3xl font-serif font-bold text-[#F3EFEA]">
+              <h2 className="text-2xl sm:text-3xl font-serif font-bold text-[#211B25] dark:text-[#F3EFEA]">
                 Customer Favourites
               </h2>
             </div>
             <button
               onClick={() => onNavigate('/shop')}
-              className="text-xs font-semibold text-[#F5D061] hover:text-[#F3C543] flex items-center gap-1 cursor-pointer"
+              className="text-xs font-semibold text-[#C99A35] dark:text-[#F5D061] hover:underline flex items-center gap-1 cursor-pointer"
             >
               <span>Browse All</span>
               <ArrowRight className="w-3.5 h-3.5" />
@@ -299,53 +299,53 @@ export const HomePage: React.FC<HomePageProps> = ({
 
       {/* 7. CUSTOMER BENEFITS SECTION */}
       <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="bg-[#120D1B] rounded-3xl border border-[#2B1E3E] p-8 sm:p-12">
+        <div className="bg-[#F2EBDD] dark:bg-[#120D1B] rounded-3xl border border-[#E4DDD0] dark:border-[#2B1E3E] p-8 sm:p-12">
           <div className="text-center max-w-xl mx-auto mb-10">
-            <h2 className="text-2xl sm:text-3xl font-serif font-bold text-[#F3EFEA]">
+            <h2 className="text-2xl sm:text-3xl font-serif font-bold text-[#211B25] dark:text-[#F3EFEA]">
               The NOVALUXE Shopping Experience
             </h2>
-            <p className="text-xs text-[#9C8EB2] mt-2">
+            <p className="text-xs text-[#746B78] dark:text-[#9C8EB2] mt-2">
               Designed for effortless retail convenience in Monrovia
             </p>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-            <div className="p-6 rounded-2xl bg-[#1A1227] border border-[#34244C]/60 space-y-3">
-              <div className="w-10 h-10 rounded-xl bg-[#281A3F] text-[#F5D061] flex items-center justify-center">
+            <div className="p-6 rounded-2xl bg-white dark:bg-[#1A1227] border border-[#E4DDD0] dark:border-[#34244C]/60 space-y-3">
+              <div className="w-10 h-10 rounded-xl bg-[#F2EBDD] dark:bg-[#281A3F] text-[#C99A35] dark:text-[#F5D061] flex items-center justify-center">
                 <ShoppingBag className="w-5 h-5" />
               </div>
-              <h3 className="text-base font-semibold text-[#F3EFEA]">Convenient Shopping</h3>
-              <p className="text-xs text-[#A79DB8] leading-relaxed">
+              <h3 className="text-base font-semibold text-[#211B25] dark:text-[#F3EFEA]">Convenient Shopping</h3>
+              <p className="text-xs text-[#746B78] dark:text-[#A79DB8] leading-relaxed">
                 Browse our full catalogue anytime without requiring an account. Instant ordering with straightforward checkout.
               </p>
             </div>
 
-            <div className="p-6 rounded-2xl bg-[#1A1227] border border-[#34244C]/60 space-y-3">
-              <div className="w-10 h-10 rounded-xl bg-[#281A3F] text-[#A855F7] flex items-center justify-center">
+            <div className="p-6 rounded-2xl bg-white dark:bg-[#1A1227] border border-[#E4DDD0] dark:border-[#34244C]/60 space-y-3">
+              <div className="w-10 h-10 rounded-xl bg-[#F2EBDD] dark:bg-[#281A3F] text-[#8B42C9] dark:text-[#A855F7] flex items-center justify-center">
                 <Sparkles className="w-5 h-5" />
               </div>
-              <h3 className="text-base font-semibold text-[#F3EFEA]">Thoughtful Variety</h3>
-              <p className="text-xs text-[#A79DB8] leading-relaxed">
+              <h3 className="text-base font-semibold text-[#211B25] dark:text-[#F3EFEA]">Thoughtful Variety</h3>
+              <p className="text-xs text-[#746B78] dark:text-[#A79DB8] leading-relaxed">
                 From high-pigment cosmetics to hydrating botanical skincare and lasting fragrances, all in one place.
               </p>
             </div>
 
-            <div className="p-6 rounded-2xl bg-[#1A1227] border border-[#34244C]/60 space-y-3">
-              <div className="w-10 h-10 rounded-xl bg-[#281A3F] text-[#F5D061] flex items-center justify-center">
+            <div className="p-6 rounded-2xl bg-white dark:bg-[#1A1227] border border-[#E4DDD0] dark:border-[#34244C]/60 space-y-3">
+              <div className="w-10 h-10 rounded-xl bg-[#F2EBDD] dark:bg-[#281A3F] text-[#C99A35] dark:text-[#F5D061] flex items-center justify-center">
                 <Truck className="w-5 h-5" />
               </div>
-              <h3 className="text-base font-semibold text-[#F3EFEA]">Monrovia Delivery & Pickup</h3>
-              <p className="text-xs text-[#A79DB8] leading-relaxed">
+              <h3 className="text-base font-semibold text-[#211B25] dark:text-[#F3EFEA]">Monrovia Delivery & Pickup</h3>
+              <p className="text-xs text-[#746B78] dark:text-[#A79DB8] leading-relaxed">
                 Choose convenient local delivery across Monrovia or quick store counter pickup at GSA Road near ELWA Roundabout.
               </p>
             </div>
 
-            <div className="p-6 rounded-2xl bg-[#1A1227] border border-[#34244C]/60 space-y-3">
-              <div className="w-10 h-10 rounded-xl bg-[#281A3F] text-[#25D366] flex items-center justify-center">
+            <div className="p-6 rounded-2xl bg-white dark:bg-[#1A1227] border border-[#E4DDD0] dark:border-[#34244C]/60 space-y-3">
+              <div className="w-10 h-10 rounded-xl bg-[#F2EBDD] dark:bg-[#281A3F] text-[#16A34A] dark:text-[#25D366] flex items-center justify-center">
                 <ShieldCheck className="w-5 h-5" />
               </div>
-              <h3 className="text-base font-semibold text-[#F3EFEA]">Direct WhatsApp Support</h3>
-              <p className="text-xs text-[#A79DB8] leading-relaxed">
+              <h3 className="text-base font-semibold text-[#211B25] dark:text-[#F3EFEA]">Direct WhatsApp Support</h3>
+              <p className="text-xs text-[#746B78] dark:text-[#A79DB8] leading-relaxed">
                 Connect directly with our team on WhatsApp for order confirmation, product guidance, and fast assistance.
               </p>
             </div>
@@ -361,10 +361,10 @@ export const HomePage: React.FC<HomePageProps> = ({
               <Instagram className="w-4 h-4" />
               <span>@sennel_bbm</span>
             </div>
-            <h2 className="text-2xl sm:text-3xl font-serif font-bold text-[#F3EFEA]">
+            <h2 className="text-2xl sm:text-3xl font-serif font-bold text-[#211B25] dark:text-[#F3EFEA]">
               Follow the NOVALUXE Experience
             </h2>
-            <p className="text-xs text-[#9C8EB2] mt-1">
+            <p className="text-xs text-[#746B78] dark:text-[#9C8EB2] mt-1">
               Discover our latest beauty essentials, product highlights, and updates on Instagram.
             </p>
           </div>
@@ -373,11 +373,11 @@ export const HomePage: React.FC<HomePageProps> = ({
             href={settings.instagramUrl}
             target="_blank"
             rel="noopener noreferrer"
-            className="px-5 py-2.5 rounded-xl bg-[#1E142F] hover:bg-[#2F1F47] text-[#F3EFEA] border border-[#483363] text-xs font-semibold flex items-center gap-2 transition-all cursor-pointer self-start sm:self-auto"
+            className="px-5 py-2.5 rounded-xl bg-[#F2EBDD] dark:bg-[#1E142F] hover:bg-[#EAE0CC] dark:hover:bg-[#2F1F47] text-[#211B25] dark:text-[#F3EFEA] border border-[#E4DDD0] dark:border-[#483363] text-xs font-semibold flex items-center gap-2 transition-all cursor-pointer self-start sm:self-auto"
           >
             <Instagram className="w-4 h-4 text-[#E1306C]" />
             <span>Follow on Instagram</span>
-            <ExternalLink className="w-3.5 h-3.5 text-[#9C8EB2]" />
+            <ExternalLink className="w-3.5 h-3.5 text-[#746B78] dark:text-[#9C8EB2]" />
           </a>
         </div>
 
@@ -388,7 +388,7 @@ export const HomePage: React.FC<HomePageProps> = ({
               href={settings.instagramUrl}
               target="_blank"
               rel="noopener noreferrer"
-              className="group relative rounded-2xl overflow-hidden aspect-square bg-[#171022] border border-[#2B1D3E] block hover:border-[#A855F7] transition-all duration-300"
+              className="group relative rounded-2xl overflow-hidden aspect-square bg-[#F2EBDD] dark:bg-[#171022] border border-[#E4DDD0] dark:border-[#2B1D3E] block hover:border-[#8B42C9] dark:hover:border-[#A855F7] transition-all duration-300"
             >
               <img
                 src={post.image}
@@ -418,16 +418,17 @@ export const HomePage: React.FC<HomePageProps> = ({
 
       {/* 9. TIKTOK INTEGRATION BANNER */}
       <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="bg-gradient-to-r from-[#170C28] via-[#1E1333] to-[#120B20] rounded-3xl border border-[#3C2956] p-8 sm:p-10 flex flex-col md:flex-row items-center justify-between gap-6">
+        <div className="bg-[#F2EBDD] dark:bg-gradient-to-r dark:from-[#170C28] dark:via-[#1E1333] dark:to-[#120B20] rounded-3xl border border-[#E4DDD0] dark:border-[#3C2956] p-8 sm:p-10 flex flex-col md:flex-row items-center justify-between gap-6">
           <div className="space-y-2 text-center md:text-left">
-            <span className="text-xs uppercase tracking-widest text-[#F5D061] font-semibold">
+            <span className="text-xs uppercase tracking-widest text-[#C99A35] dark:text-[#F5D061] font-semibold">
               Trending Content
             </span>
-            <h3 className="text-2xl font-serif font-bold text-[#F3EFEA]">
+            <h3 className="text-2xl font-serif font-bold text-[#211B25] dark:text-[#F3EFEA]">
               Connect with NOVALUXE on TikTok
             </h3>
-            <p className="text-xs text-[#C5B9D8] max-w-lg">
-              Watch product demonstrations, beauty tips, unboxings, and store highlights on our official TikTok profile <span className="text-[#F5D061] font-medium">@sennel_bbm</span>.
+            <p className="text-xs text-[#746B78] dark:text-[#C5B9D8] max-w-lg">
+              Watch product demonstrations, beauty tips, unboxings, and store highlights on our official TikTok profile{' '}
+              <span className="text-[#8B42C9] dark:text-[#F5D061] font-medium">@sennel_bbm</span>.
             </p>
           </div>
 
@@ -435,7 +436,7 @@ export const HomePage: React.FC<HomePageProps> = ({
             href={settings.tiktokUrl}
             target="_blank"
             rel="noopener noreferrer"
-            className="px-6 py-3 rounded-xl bg-[#000000] hover:bg-[#121212] text-[#F3EFEA] border border-[#44305E] hover:border-[#00F2EA]/40 text-xs font-semibold flex items-center gap-2.5 transition-all shadow-lg shrink-0 cursor-pointer group"
+            className="px-6 py-3 rounded-xl bg-[#0F0B16] hover:bg-[#1B1328] text-[#F3EFEA] border border-[#44305E] hover:border-[#00F2EA]/50 text-xs font-semibold flex items-center gap-2.5 transition-all shadow-lg shrink-0 cursor-pointer group"
           >
             <TikTokIcon className="w-5 h-5 transition-transform group-hover:scale-110" />
             <span>Follow @sennel_bbm on TikTok</span>

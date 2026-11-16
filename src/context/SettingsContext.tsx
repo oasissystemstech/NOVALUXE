@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { SiteSettings, Category, Product } from '../types';
-import { store } from '../lib/store';
+import { store, INITIAL_PROMO_CAMPAIGN } from '../lib/store';
+import { supabase, isSupabaseConfigured } from '../lib/supabase';
 
 interface SettingsContextType {
   settings: SiteSettings;
@@ -18,6 +19,49 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const [settings, setSettings] = useState<SiteSettings>(() => store.getSettings());
   const [categories, setCategories] = useState<Category[]>(() => store.getCategories());
   const [products, setProducts] = useState<Product[]>(() => store.getProducts());
+
+  useEffect(() => {
+    if (!isSupabaseConfigured || !supabase) return;
+    let active = true;
+
+    async function hydrateFromSupabase() {
+      try {
+        const [{ data, error }, catalog] = await Promise.all([
+          supabase!
+            .from('site_settings')
+            .select('setting_value')
+            .eq('setting_key', 'general_config')
+            .maybeSingle(),
+          store.syncCatalogFromSupabase()
+        ]);
+
+        if (!error && data?.setting_value && active) {
+          const remote = data.setting_value as Partial<SiteSettings>;
+          setSettings(prev => ({
+            ...prev,
+            ...remote,
+            promoCampaign: {
+              ...INITIAL_PROMO_CAMPAIGN,
+              ...(prev.promoCampaign || {}),
+              ...(remote.promoCampaign || {})
+            }
+          }));
+        }
+
+        if (active && catalog.categories && catalog.categories.length > 0) {
+          setCategories(catalog.categories);
+        }
+        if (active && catalog.products && catalog.products.length > 0) {
+          setProducts(catalog.products);
+        }
+      } catch {}
+    }
+
+    hydrateFromSupabase();
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const refreshCategories = () => {
     setCategories(store.getCategories());

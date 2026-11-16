@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   LayoutDashboard,
   Package,
@@ -16,19 +16,25 @@ import {
   Check,
   X,
   Search,
-  ExternalLink,
   RefreshCw,
   Copy,
-  AlertCircle
+  AlertCircle,
+  Sparkles,
+  Film,
+  Eye
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useSettings } from '../context/SettingsContext';
 import { store } from '../lib/store';
-import { Product, Category, Order, OrderStatus, PaymentStatus, Enquiry } from '../types';
+import { Product, Category, Order, OrderStatus, PaymentStatus, Enquiry, PromoFrequency } from '../types';
 import { NovaluxeLogo } from '../components/NovaluxeLogo';
 import { testSupabaseConnection, supabaseUrl } from '../lib/supabase';
 import { ProductImageUploader } from '../components/ProductImageUploader';
 import { CategoryImageUploader } from '../components/CategoryImageUploader';
+import { ThemeToggleButton } from '../components/ThemeToggleButton';
+import { AIBulkProductUploader } from '../components/AIBulkProductUploader';
+import { PromotionalMediaUploader } from '../components/PromotionalMediaUploader';
+import { PromotionalFlyerModal } from '../components/PromotionalFlyerModal';
 import { handleImageError } from '../lib/imageUtils';
 
 interface AdminDashboardPageProps {
@@ -36,11 +42,21 @@ interface AdminDashboardPageProps {
 }
 
 export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({ onBackToStore }) => {
-  const { adminUser, logout } = useAuth();
+  const { isAdmin, logout } = useAuth();
   const { settings, updateSettings, categories, refreshCategories, products, refreshProducts, resetAll } = useSettings();
 
   const [activeTab, setActiveTab] = useState<
-    'overview' | 'products' | 'categories' | 'orders' | 'customers' | 'enquiries' | 'content' | 'settings' | 'supabase'
+    | 'overview'
+    | 'products'
+    | 'ai-bulk'
+    | 'categories'
+    | 'orders'
+    | 'customers'
+    | 'enquiries'
+    | 'content'
+    | 'promotions'
+    | 'settings'
+    | 'supabase'
   >('overview');
 
   const [orders, setOrders] = useState<Order[]>(() => store.getOrders());
@@ -68,6 +84,9 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({ onBackTo
   const [testingConnection, setTestingConnection] = useState(false);
   const [connectionResult, setConnectionResult] = useState<{ success: boolean; message: string } | null>(null);
 
+  // Promo live preview modal
+  const [isPromoPreviewOpen, setIsPromoPreviewOpen] = useState(false);
+
   const handleTestSupabase = async () => {
     setTestingConnection(true);
     const result = await testSupabaseConnection();
@@ -79,12 +98,34 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({ onBackTo
   const [settingsForm, setSettingsForm] = useState(settings);
   const [settingsSaved, setSettingsSaved] = useState(false);
 
+  useEffect(() => {
+    setSettingsForm(settings);
+  }, [settings]);
+
   const refreshAllData = () => {
     refreshProducts();
     refreshCategories();
     setOrders(store.getOrders());
     setEnquiries(store.getEnquiries());
+    if (isAdmin) {
+      store.syncAdminOrdersFromSupabase().then(setOrders).catch(() => {});
+      store.syncAdminEnquiriesFromSupabase().then(setEnquiries).catch(() => {});
+    }
   };
+
+  useEffect(() => {
+    if (!isAdmin) return;
+    let active = true;
+    store.syncAdminOrdersFromSupabase().then(synced => {
+      if (active) setOrders(synced);
+    }).catch(() => {});
+    store.syncAdminEnquiriesFromSupabase().then(synced => {
+      if (active) setEnquiries(synced);
+    }).catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, [isAdmin]);
 
   // KPIs
   const totalProducts = products.length;
@@ -92,7 +133,6 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({ onBackTo
   const outOfStockProducts = products.filter(p => !p.isAvailable || p.stockQuantity <= 0).length;
   const totalOrders = orders.length;
   const pendingOrders = orders.filter(o => o.orderStatus === 'Pending' || o.orderStatus === 'Confirmed').length;
-  const completedOrders = orders.filter(o => o.orderStatus === 'Completed').length;
   const totalRevenue = orders.reduce((sum, o) => sum + o.totalAmount, 0);
 
   // Order status updater
@@ -191,20 +231,36 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({ onBackTo
     return Array.from(map.values());
   }, [orders]);
 
+  const promo = settingsForm.promoCampaign;
+  const updatePromoField = <K extends keyof typeof promo>(key: K, value: (typeof promo)[K]) => {
+    setSettingsForm(prev => ({
+      ...prev,
+      promoCampaign: {
+        ...prev.promoCampaign,
+        [key]: value
+      }
+    }));
+  };
+
   const SQL_MIGRATION_TEXT = `-- ==============================================================================
--- NOVALUXE BY SENNEL - OFFICIAL SUPABASE DATABASE SCHEMA
+-- NOVALUXE BY SENNEL - HARDENED SUPABASE DATABASE SCHEMA & RLS
+-- Idempotent & non-destructive: safe to re-run without overwriting settings.
 -- ==============================================================================
 create extension if not exists "uuid-ossp";
 
-create or replace function update_updated_at_column()
-returns trigger as $$
+create or replace function public.update_updated_at_column()
+returns trigger
+language plpgsql
+set search_path = public
+as $$
 begin
   new.updated_at = timezone('utc'::text, now());
   return new;
 end;
-$$ language plpgsql;
+$$;
 
-create table if not exists categories (
+-- Core Tables
+create table if not exists public.categories (
   id uuid primary key default uuid_generate_v4(),
   name text not null,
   slug text unique not null,
@@ -215,41 +271,56 @@ create table if not exists categories (
   created_at timestamp with time zone default timezone('utc'::text, now()) not null
 );
 
-create table if not exists products (
+create table if not exists public.products (
   id uuid primary key default uuid_generate_v4(),
   name text not null,
   slug text unique not null,
   description text not null,
   price numeric(10, 2) not null check (price >= 0),
   currency text default 'USD' not null,
-  category_id uuid references categories(id) on delete set null,
+  category_id uuid references public.categories(id) on delete set null,
   sku text,
   stock_quantity integer default 0 check (stock_quantity >= 0),
   is_available boolean default true,
   is_featured boolean default false,
   is_new_arrival boolean default false,
   is_best_seller boolean default false,
+  brand text,
+  product_type text,
+  size_or_volume text,
+  specifications text,
+  key_ingredients jsonb default '[]'::jsonb,
+  features jsonb default '[]'::jsonb,
+  tags jsonb default '[]'::jsonb,
   created_at timestamp with time zone default timezone('utc'::text, now()) not null,
   updated_at timestamp with time zone default timezone('utc'::text, now()) not null
 );
 
-drop trigger if exists set_products_updated_at on products;
-create trigger set_products_updated_at
-before update on products
-for each row execute function update_updated_at_column();
+alter table public.products add column if not exists brand text;
+alter table public.products add column if not exists product_type text;
+alter table public.products add column if not exists size_or_volume text;
+alter table public.products add column if not exists specifications text;
+alter table public.products add column if not exists key_ingredients jsonb default '[]'::jsonb;
+alter table public.products add column if not exists features jsonb default '[]'::jsonb;
+alter table public.products add column if not exists tags jsonb default '[]'::jsonb;
 
-create table if not exists product_images (
+drop trigger if exists set_products_updated_at on public.products;
+create trigger set_products_updated_at
+before update on public.products
+for each row execute function public.update_updated_at_column();
+
+create table if not exists public.product_images (
   id uuid primary key default uuid_generate_v4(),
-  product_id uuid not null references products(id) on delete cascade,
+  product_id uuid not null references public.products(id) on delete cascade,
   image_url text not null,
   alt_text text,
   display_order integer default 0,
   created_at timestamp with time zone default timezone('utc'::text, now()) not null
 );
 
-create table if not exists product_variants (
+create table if not exists public.product_variants (
   id uuid primary key default uuid_generate_v4(),
-  product_id uuid not null references products(id) on delete cascade,
+  product_id uuid not null references public.products(id) on delete cascade,
   variant_name text not null,
   variant_value text not null,
   price_adjustment numeric(10, 2) default 0.00,
@@ -257,7 +328,7 @@ create table if not exists product_variants (
   created_at timestamp with time zone default timezone('utc'::text, now()) not null
 );
 
-create table if not exists customers (
+create table if not exists public.customers (
   id uuid primary key default uuid_generate_v4(),
   full_name text not null,
   phone text not null,
@@ -265,10 +336,10 @@ create table if not exists customers (
   created_at timestamp with time zone default timezone('utc'::text, now()) not null
 );
 
-create table if not exists orders (
+create table if not exists public.orders (
   id uuid primary key default uuid_generate_v4(),
   order_reference text unique not null,
-  customer_id uuid references customers(id) on delete set null,
+  customer_id uuid references public.customers(id) on delete set null,
   customer_name text not null,
   customer_phone text not null,
   customer_email text,
@@ -286,10 +357,10 @@ create table if not exists orders (
   updated_at timestamp with time zone default timezone('utc'::text, now()) not null
 );
 
-create table if not exists order_items (
+create table if not exists public.order_items (
   id uuid primary key default uuid_generate_v4(),
-  order_id uuid not null references orders(id) on delete cascade,
-  product_id uuid references products(id) on delete set null,
+  order_id uuid not null references public.orders(id) on delete cascade,
+  product_id uuid references public.products(id) on delete set null,
   product_name text not null,
   selected_variant text,
   quantity integer not null check (quantity > 0),
@@ -297,7 +368,7 @@ create table if not exists order_items (
   subtotal numeric(10, 2) not null check (subtotal >= 0)
 );
 
-create table if not exists enquiries (
+create table if not exists public.enquiries (
   id uuid primary key default uuid_generate_v4(),
   full_name text not null,
   phone text not null,
@@ -308,126 +379,119 @@ create table if not exists enquiries (
   created_at timestamp with time zone default timezone('utc'::text, now()) not null
 );
 
-create table if not exists site_settings (
+create table if not exists public.site_settings (
   id uuid primary key default uuid_generate_v4(),
   setting_key text unique not null,
   setting_value jsonb not null,
   updated_at timestamp with time zone default timezone('utc'::text, now()) not null
 );
 
-create table if not exists admin_profiles (
+create table if not exists public.admin_profiles (
   id uuid primary key default uuid_generate_v4(),
   user_id uuid not null unique,
   role text default 'admin' check (role in ('admin', 'super_admin')),
   created_at timestamp with time zone default timezone('utc'::text, now()) not null
 );
 
--- Indexes
-create index if not exists idx_products_category on products(category_id);
-create index if not exists idx_products_slug on products(slug);
-create index if not exists idx_orders_reference on orders(order_reference);
-create index if not exists idx_orders_customer_phone on orders(customer_phone);
-create index if not exists idx_order_items_order on order_items(order_id);
+create table if not exists public.bulk_upload_history (
+  id uuid primary key default uuid_generate_v4(),
+  uploaded_count integer not null default 0,
+  processed_count integer not null default 0,
+  awaiting_review_count integer not null default 0,
+  saved_count integer not null default 0,
+  failed_count integer not null default 0,
+  notes text,
+  created_at timestamp with time zone default timezone('utc'::text, now()) not null
+);
 
--- RLS
-alter table categories enable row level security;
-alter table products enable row level security;
-alter table product_images enable row level security;
-alter table product_variants enable row level security;
-alter table customers enable row level security;
-alter table orders enable row level security;
-alter table order_items enable row level security;
-alter table enquiries enable row level security;
-alter table site_settings enable row level security;
-alter table admin_profiles enable row level security;
+create table if not exists public.order_lookup_attempts (
+  order_reference text primary key,
+  failed_count integer not null default 0,
+  window_started_at timestamp with time zone default timezone('utc'::text, now()) not null,
+  locked_until timestamp with time zone
+);
 
--- Policies
-create policy "Allow public read active categories" on categories for select using (is_active = true);
-create policy "Allow public read available products" on products for select using (is_available = true);
-create policy "Allow public read product images" on product_images for select using (true);
-create policy "Allow public read product variants" on product_variants for select using (true);
-create policy "Allow public read site settings" on site_settings for select using (true);
-create policy "Allow read order by reference" on orders for select using (true);
-create policy "Allow read order items" on order_items for select using (true);
+-- Admin Authorization, Hardened Order Lookup & Atomic Checkout RPCs
+create or replace function public.is_novaluxe_admin()
+returns boolean language sql stable security definer set search_path = public as $$
+  select exists (
+    select 1 from public.admin_profiles ap
+    where ap.user_id = auth.uid() and ap.role in ('admin', 'super_admin')
+  );
+$$;
 
-create policy "Allow public order insertion" on orders for insert with check (true);
-create policy "Allow public order items insertion" on order_items for insert with check (true);
-create policy "Allow public enquiries insertion" on enquiries for insert with check (true);
-create policy "Allow public customers insertion" on customers for insert with check (true);
+create or replace function public.is_novaluxe_super_admin()
+returns boolean language sql stable security definer set search_path = public as $$
+  select exists (
+    select 1 from public.admin_profiles ap
+    where ap.user_id = auth.uid() and ap.role = 'super_admin'
+  );
+$$;
 
-create policy "Allow admins full access to categories" on categories for all using (auth.role() = 'authenticated');
-create policy "Allow admins full access to products" on products for all using (auth.role() = 'authenticated');
-create policy "Allow admins full access to orders" on orders for all using (auth.role() = 'authenticated');
-create policy "Allow admins full access to order items" on order_items for all using (auth.role() = 'authenticated');
-create policy "Allow admins full access to enquiries" on enquiries for all using (auth.role() = 'authenticated');
-create policy "Allow admins full access to site settings" on site_settings for all using (auth.role() = 'authenticated');
-create policy "Allow admins full access to customers" on customers for all using (auth.role() = 'authenticated');
+-- Deprecated order_is_pending_checkout(uuid) has been removed.
+-- Direct anonymous INSERT on customers, orders, and order_items is revoked.
+-- Run the complete non-destructive hardening script in:
+--   supabase/migrations/20261116_security_audit_and_hardening.sql
+-- Or the complete fresh schema in:
+--   supabase/schema.sql
+-- (Includes create_checkout_order, lookup_order_by_reference, pg_policies audit,
+--  storage.objects bucket hardening, and verified /images/... asset migration.)
+-- Remember to register your Supabase Auth Admin User UUID in public.admin_profiles:
+--   insert into public.admin_profiles (user_id, role) values ('<AUTH-USER-UUID>', 'super_admin')
+--   on conflict (user_id) do update set role = excluded.role;`;
 
--- ==============================================================================
--- SUPABASE STORAGE: PRODUCT IMAGES BUCKET & POLICIES
--- ==============================================================================
--- 1. Create public bucket 'product-images'
-insert into storage.buckets (id, name, public)
-values ('product-images', 'product-images', true)
-on conflict (id) do update set public = true;
+  const navTabs: {
+    id: typeof activeTab;
+    label: string;
+    icon: React.ComponentType<{ className?: string }>;
+    count?: number | string;
+  }[] = [
+    { id: 'overview', label: 'Overview', icon: LayoutDashboard },
+    { id: 'products', label: 'Products', icon: Package, count: products.length },
+    { id: 'ai-bulk', label: 'AI Bulk Upload', icon: Sparkles, count: 'AI' },
+    { id: 'categories', label: 'Categories', icon: Layers, count: categories.length },
+    { id: 'orders', label: 'Orders', icon: ShoppingBag, count: pendingOrders },
+    { id: 'customers', label: 'Customers', icon: Users, count: customerList.length },
+    { id: 'enquiries', label: 'Enquiries', icon: MessageSquare, count: enquiries.length },
+    { id: 'content', label: 'Hero & Content', icon: Globe },
+    { id: 'promotions', label: 'Promotional Pop-Up', icon: Film },
+    { id: 'settings', label: 'Business Settings', icon: Settings },
+    { id: 'supabase', label: 'Supabase SQL', icon: Database }
+  ];
 
--- 2. Allow public access to view product images
-create policy "Public Access to product-images" on storage.objects
-  for select using (bucket_id = 'product-images');
+  const inputClass =
+    'w-full px-4 py-2 bg-[#FAF8F4] dark:bg-[#1A1227] border border-[#E4DDD0] dark:border-[#34244C] rounded-xl text-xs text-[#211B25] dark:text-[#F3EFEA] placeholder-[#9B91A1] dark:placeholder-[#6D5D82] focus:outline-none focus:border-[#8B42C9] dark:focus:border-[#A855F7]';
 
--- 3. Allow authenticated & admin users to upload, update, and delete product images
-create policy "Allow upload to product-images" on storage.objects
-  for insert with check (bucket_id = 'product-images');
-
-create policy "Allow update to product-images" on storage.objects
-  for update with check (bucket_id = 'product-images');
-
-create policy "Allow delete from product-images" on storage.objects
-  for delete using (bucket_id = 'product-images');
-
--- 4. Create public bucket 'category-images'
-insert into storage.buckets (id, name, public)
-values ('category-images', 'category-images', true)
-on conflict (id) do update set public = true;
-
-create policy "Public Access to category-images" on storage.objects
-  for select using (bucket_id = 'category-images');
-
-create policy "Allow upload to category-images" on storage.objects
-  for insert with check (bucket_id = 'category-images');
-
-create policy "Allow update to category-images" on storage.objects
-  for update with check (bucket_id = 'category-images');
-
-create policy "Allow delete from category-images" on storage.objects
-  for delete using (bucket_id = 'category-images');`;
+  const modalInputClass =
+    'w-full px-3 py-2 bg-[#FAF8F4] dark:bg-[#1A1227] border border-[#E4DDD0] dark:border-[#34244C] rounded-xl text-[#211B25] dark:text-[#F3EFEA] placeholder-[#9B91A1] dark:placeholder-[#6D5D82] focus:outline-none focus:border-[#8B42C9] dark:focus:border-[#A855F7]';
 
   return (
-    <div className="min-h-screen bg-[#09070D] text-[#F3EFEA] flex flex-col">
+    <div className="min-h-screen bg-[#FAF8F4] dark:bg-[#09070D] text-[#211B25] dark:text-[#F3EFEA] flex flex-col transition-colors duration-200">
       {/* Top Admin Nav */}
-      <div className="bg-[#100B18] border-b border-[#281C38] px-4 sm:px-8 py-3.5 flex items-center justify-between">
+      <div className="bg-white/90 dark:bg-[#100B18] border-b border-[#E4DDD0] dark:border-[#281C38] px-4 sm:px-8 py-3.5 flex items-center justify-between backdrop-blur-md sticky top-0 z-30">
         <div className="flex items-center gap-4">
           <div onClick={onBackToStore} className="cursor-pointer">
             <NovaluxeLogo size="sm" variant="transparent" />
           </div>
-          <span className="text-xs text-[#E2D4B7] bg-[#221735] px-2.5 py-0.5 rounded-full font-medium hidden sm:inline">
+          <span className="text-xs text-[#8B42C9] dark:text-[#E2D4B7] bg-[#F2EBDD] dark:bg-[#221735] border border-[#E4DDD0] dark:border-transparent px-2.5 py-0.5 rounded-full font-medium hidden sm:inline">
             Admin Console
           </span>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2 sm:gap-3">
+          <ThemeToggleButton showLabel />
           <button
             onClick={onBackToStore}
-            className="text-xs text-[#A79DB8] hover:text-[#F3EFEA] px-3 py-1.5 rounded-lg border border-[#34244C] transition-colors"
+            className="text-xs text-[#524858] dark:text-[#A79DB8] hover:text-[#211B25] dark:hover:text-[#F3EFEA] px-3 py-1.5 rounded-lg border border-[#E4DDD0] dark:border-[#34244C] transition-colors cursor-pointer"
           >
             ← View Storefront
           </button>
           <button
             onClick={logout}
-            className="text-xs text-red-400 hover:text-red-300 px-3 py-1.5 rounded-lg bg-red-950/40 border border-red-800/40 flex items-center gap-1.5 transition-colors"
+            className="text-xs text-red-600 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300 px-3 py-1.5 rounded-lg bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800/40 flex items-center gap-1.5 transition-colors cursor-pointer"
           >
             <LogOut className="w-3.5 h-3.5" />
-            <span>Sign Out</span>
+            <span className="hidden sm:inline">Sign Out</span>
           </button>
         </div>
       </div>
@@ -435,40 +499,40 @@ create policy "Allow delete from category-images" on storage.objects
       {/* Main Admin Layout */}
       <div className="flex-1 flex flex-col md:flex-row">
         {/* Sidebar Tabs */}
-        <aside className="w-full md:w-64 bg-[#0D0914] border-r border-[#241933] p-4 space-y-1">
-          <div className="text-[11px] font-semibold uppercase tracking-wider text-[#7C6E91] px-3 py-2">
+        <aside className="w-full md:w-64 bg-[#F2EBDD]/70 dark:bg-[#0D0914] border-b md:border-b-0 md:border-r border-[#E4DDD0] dark:border-[#241933] p-4 space-y-1">
+          <div className="text-[11px] font-semibold uppercase tracking-wider text-[#746B78] dark:text-[#7C6E91] px-3 py-2">
             Navigation
           </div>
 
-          {[
-            { id: 'overview', label: 'Overview', icon: LayoutDashboard },
-            { id: 'products', label: 'Products', icon: Package, count: products.length },
-            { id: 'categories', label: 'Categories', icon: Layers, count: categories.length },
-            { id: 'orders', label: 'Orders', icon: ShoppingBag, count: pendingOrders },
-            { id: 'customers', label: 'Customers', icon: Users, count: customerList.length },
-            { id: 'enquiries', label: 'Enquiries', icon: MessageSquare, count: enquiries.length },
-            { id: 'content', label: 'Hero & Content', icon: Globe },
-            { id: 'settings', label: 'Business Settings', icon: Settings },
-            { id: 'supabase', label: 'Supabase SQL', icon: Database }
-          ].map(tab => {
+          {navTabs.map(tab => {
             const Icon = tab.icon;
             const isActive = activeTab === tab.id;
             return (
               <button
                 key={tab.id}
-                onClick={() => setActiveTab(tab.id as any)}
+                onClick={() => setActiveTab(tab.id)}
                 className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-medium transition-colors cursor-pointer ${
                   isActive
-                    ? 'bg-[#25183B] text-[#F5D061] font-semibold border border-[#482E70]/60'
-                    : 'text-[#C5B9D8] hover:bg-[#181124] hover:text-[#FFFFFF]'
+                    ? 'bg-white dark:bg-[#25183B] text-[#8B42C9] dark:text-[#F5D061] font-semibold border border-[#8B42C9]/30 dark:border-[#482E70]/60 shadow-xs dark:shadow-none'
+                    : 'text-[#524858] dark:text-[#C5B9D8] hover:bg-white/60 dark:hover:bg-[#181124] hover:text-[#211B25] dark:hover:text-[#FFFFFF]'
                 }`}
               >
                 <div className="flex items-center gap-2.5">
-                  <Icon className={`w-4 h-4 ${isActive ? 'text-[#F5D061]' : 'text-[#8C829B]'}`} />
+                  <Icon
+                    className={`w-4 h-4 ${
+                      isActive ? 'text-[#8B42C9] dark:text-[#F5D061]' : 'text-[#746B78] dark:text-[#8C829B]'
+                    }`}
+                  />
                   <span>{tab.label}</span>
                 </div>
                 {tab.count !== undefined && (
-                  <span className={`text-[10px] px-2 py-0.5 rounded-full ${isActive ? 'bg-[#3A265E] text-[#F5D061]' : 'bg-[#181124] text-[#8C829B]'}`}>
+                  <span
+                    className={`text-[10px] px-2 py-0.5 rounded-full ${
+                      isActive
+                        ? 'bg-[#F2EBDD] dark:bg-[#3A265E] text-[#8B42C9] dark:text-[#F5D061]'
+                        : 'bg-[#E4DDD0]/70 dark:bg-[#181124] text-[#524858] dark:text-[#8C829B]'
+                    }`}
+                  >
                     {tab.count}
                   </span>
                 )}
@@ -483,46 +547,51 @@ create policy "Allow delete from category-images" on storage.objects
           {activeTab === 'overview' && (
             <div className="space-y-8">
               <div>
-                <h1 className="text-2xl font-serif font-bold text-[#F3EFEA]">Store Overview</h1>
-                <p className="text-xs text-[#9C8EB2]">Real-time inventory and customer order activity in Monrovia.</p>
+                <h1 className="text-2xl font-serif font-bold text-[#211B25] dark:text-[#F3EFEA]">Store Overview</h1>
+                <p className="text-xs text-[#746B78] dark:text-[#9C8EB2]">
+                  Real-time inventory and customer order activity in Monrovia.
+                </p>
               </div>
 
               {/* KPI Strip */}
               <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
-                <div className="p-5 rounded-2xl bg-[#120D1B] border border-[#261B36] space-y-1">
-                  <span className="text-xs text-[#9C8EB2]">Total Products</span>
-                  <p className="text-2xl font-serif font-bold text-[#F3EFEA]">{totalProducts}</p>
-                  <p className="text-[11px] text-emerald-400">{inStockProducts} in stock • {outOfStockProducts} out</p>
-                </div>
-
-                <div className="p-5 rounded-2xl bg-[#120D1B] border border-[#261B36] space-y-1">
-                  <span className="text-xs text-[#9C8EB2]">Active Orders</span>
-                  <p className="text-2xl font-serif font-bold text-[#F5D061]">{pendingOrders}</p>
-                  <p className="text-[11px] text-[#A855F7]">{totalOrders} total recorded</p>
-                </div>
-
-                <div className="p-5 rounded-2xl bg-[#120D1B] border border-[#261B36] space-y-1">
-                  <span className="text-xs text-[#9C8EB2]">Total Sales Volume</span>
-                  <p className="text-2xl font-serif font-bold text-[#F5D061] tabular-nums">
-                    {settings.currency}{totalRevenue.toFixed(2)}
+                <div className="p-5 rounded-2xl bg-white dark:bg-[#120D1B] border border-[#E4DDD0] dark:border-[#261B36] space-y-1 shadow-xs dark:shadow-none">
+                  <span className="text-xs text-[#746B78] dark:text-[#9C8EB2]">Total Products</span>
+                  <p className="text-2xl font-serif font-bold text-[#211B25] dark:text-[#F3EFEA]">{totalProducts}</p>
+                  <p className="text-[11px] text-emerald-600 dark:text-emerald-400">
+                    {inStockProducts} in stock • {outOfStockProducts} out
                   </p>
-                  <p className="text-[11px] text-[#9C8EB2]">Monrovia retail orders</p>
                 </div>
 
-                <div className="p-5 rounded-2xl bg-[#120D1B] border border-[#261B36] space-y-1">
-                  <span className="text-xs text-[#9C8EB2]">Customer Enquiries</span>
-                  <p className="text-2xl font-serif font-bold text-[#A855F7]">{enquiries.length}</p>
-                  <p className="text-[11px] text-[#9C8EB2]">Received via website</p>
+                <div className="p-5 rounded-2xl bg-white dark:bg-[#120D1B] border border-[#E4DDD0] dark:border-[#261B36] space-y-1 shadow-xs dark:shadow-none">
+                  <span className="text-xs text-[#746B78] dark:text-[#9C8EB2]">Active Orders</span>
+                  <p className="text-2xl font-serif font-bold text-[#9E751C] dark:text-[#F5D061]">{pendingOrders}</p>
+                  <p className="text-[11px] text-[#8B42C9] dark:text-[#A855F7]">{totalOrders} total recorded</p>
+                </div>
+
+                <div className="p-5 rounded-2xl bg-white dark:bg-[#120D1B] border border-[#E4DDD0] dark:border-[#261B36] space-y-1 shadow-xs dark:shadow-none">
+                  <span className="text-xs text-[#746B78] dark:text-[#9C8EB2]">Total Sales Volume</span>
+                  <p className="text-2xl font-serif font-bold text-[#9E751C] dark:text-[#F5D061] tabular-nums">
+                    {settings.currency}
+                    {totalRevenue.toFixed(2)}
+                  </p>
+                  <p className="text-[11px] text-[#746B78] dark:text-[#9C8EB2]">Monrovia retail orders</p>
+                </div>
+
+                <div className="p-5 rounded-2xl bg-white dark:bg-[#120D1B] border border-[#E4DDD0] dark:border-[#261B36] space-y-1 shadow-xs dark:shadow-none">
+                  <span className="text-xs text-[#746B78] dark:text-[#9C8EB2]">Customer Enquiries</span>
+                  <p className="text-2xl font-serif font-bold text-[#8B42C9] dark:text-[#A855F7]">{enquiries.length}</p>
+                  <p className="text-[11px] text-[#746B78] dark:text-[#9C8EB2]">Received via website</p>
                 </div>
               </div>
 
               {/* Recent Orders Preview */}
-              <div className="bg-[#120D1B] rounded-2xl border border-[#261B36] p-6 space-y-4">
-                <div className="flex items-center justify-between border-b border-[#261B36] pb-3">
-                  <h2 className="text-base font-serif font-bold text-[#F3EFEA]">Recent Orders</h2>
+              <div className="bg-white dark:bg-[#120D1B] rounded-2xl border border-[#E4DDD0] dark:border-[#261B36] p-6 space-y-4 shadow-xs dark:shadow-none">
+                <div className="flex items-center justify-between border-b border-[#E4DDD0] dark:border-[#261B36] pb-3">
+                  <h2 className="text-base font-serif font-bold text-[#211B25] dark:text-[#F3EFEA]">Recent Orders</h2>
                   <button
                     onClick={() => setActiveTab('orders')}
-                    className="text-xs text-[#F5D061] hover:underline"
+                    className="text-xs text-[#9E751C] dark:text-[#F5D061] hover:underline cursor-pointer"
                   >
                     View All Orders →
                   </button>
@@ -531,7 +600,7 @@ create policy "Allow delete from category-images" on storage.objects
                 <div className="overflow-x-auto">
                   <table className="w-full text-left text-xs">
                     <thead>
-                      <tr className="text-[#8C829B] border-b border-[#241933]">
+                      <tr className="text-[#746B78] dark:text-[#8C829B] border-b border-[#E4DDD0] dark:border-[#241933]">
                         <th className="pb-2">Reference</th>
                         <th className="pb-2">Customer</th>
                         <th className="pb-2">Location</th>
@@ -540,22 +609,23 @@ create policy "Allow delete from category-images" on storage.objects
                         <th className="pb-2">Status</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-[#241933]">
+                    <tbody className="divide-y divide-[#E4DDD0] dark:divide-[#241933]">
                       {orders.slice(0, 5).map(o => (
                         <tr
                           key={o.id}
                           onClick={() => setSelectedOrder(o)}
-                          className="hover:bg-[#1A1227] cursor-pointer"
+                          className="hover:bg-[#FAF8F4] dark:hover:bg-[#1A1227] cursor-pointer"
                         >
-                          <td className="py-3 font-mono font-semibold text-[#F5D061]">{o.orderReference}</td>
-                          <td className="py-3 text-[#F3EFEA]">{o.customerName}</td>
-                          <td className="py-3 text-[#C5B9D8]">{o.deliveryLocation}</td>
-                          <td className="py-3 text-[#C5B9D8]">{o.deliveryMethod}</td>
-                          <td className="py-3 font-semibold text-[#F3EFEA] tabular-nums">
-                            {o.currency}{o.totalAmount.toFixed(2)}
+                          <td className="py-3 font-mono font-semibold text-[#9E751C] dark:text-[#F5D061]">{o.orderReference}</td>
+                          <td className="py-3 text-[#211B25] dark:text-[#F3EFEA]">{o.customerName}</td>
+                          <td className="py-3 text-[#524858] dark:text-[#C5B9D8]">{o.deliveryLocation}</td>
+                          <td className="py-3 text-[#524858] dark:text-[#C5B9D8]">{o.deliveryMethod}</td>
+                          <td className="py-3 font-semibold text-[#211B25] dark:text-[#F3EFEA] tabular-nums">
+                            {o.currency}
+                            {o.totalAmount.toFixed(2)}
                           </td>
                           <td className="py-3">
-                            <span className="px-2 py-0.5 rounded-full bg-[#201533] text-[#F5D061] text-[10px] font-semibold border border-[#3A2954]">
+                            <span className="px-2 py-0.5 rounded-full bg-[#F2EBDD] dark:bg-[#201533] text-[#9E751C] dark:text-[#F5D061] text-[10px] font-semibold border border-[#E4DDD0] dark:border-[#3A2954]">
                               {o.orderStatus}
                             </span>
                           </td>
@@ -573,43 +643,54 @@ create policy "Allow delete from category-images" on storage.objects
             <div className="space-y-6">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                 <div>
-                  <h1 className="text-2xl font-serif font-bold text-[#F3EFEA]">Product Management</h1>
-                  <p className="text-xs text-[#9C8EB2]">Add, edit, change prices, and adjust stock for your Monrovia store catalogue.</p>
+                  <h1 className="text-2xl font-serif font-bold text-[#211B25] dark:text-[#F3EFEA]">Product Management</h1>
+                  <p className="text-xs text-[#746B78] dark:text-[#9C8EB2]">
+                    Add, edit, change prices, and adjust stock for your Monrovia store catalogue.
+                  </p>
                 </div>
-                <button
-                  onClick={() => {
-                    setEditingProduct({
-                      id: `prod-${Date.now()}`,
-                      name: '',
-                      slug: '',
-                      description: '',
-                      price: 25.0,
-                      currency: 'USD',
-                      categoryId: categories[0]?.id || 'cat-skincare',
-                      sku: `NVL-${Math.floor(100 + Math.random() * 900)}`,
-                      stockQuantity: 20,
-                      isAvailable: true,
-                      isFeatured: false,
-                      isNewArrival: true,
-                      isBestSeller: false,
-                      images: ['/images/products/avalon_eclat.jpg'],
-                      createdAt: new Date().toISOString(),
-                      updatedAt: new Date().toISOString()
-                    });
-                    setIsProductModalOpen(true);
-                  }}
-                  className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-[#A855F7] to-[#CA8A04] text-[#0A0710] font-semibold text-xs flex items-center gap-1.5 shadow-md cursor-pointer"
-                >
-                  <Plus className="w-4 h-4" />
-                  <span>Add New Product</span>
-                </button>
+                <div className="flex items-center gap-2.5">
+                  <button
+                    onClick={() => setActiveTab('ai-bulk')}
+                    className="px-4 py-2.5 rounded-xl bg-white dark:bg-[#1A1227] text-[#8B42C9] dark:text-[#F5D061] border border-[#E4DDD0] dark:border-[#34244C] font-semibold text-xs flex items-center gap-1.5 hover:bg-[#F2EBDD] dark:hover:bg-[#251A38] transition-colors cursor-pointer"
+                  >
+                    <Sparkles className="w-4 h-4" />
+                    <span>AI Bulk Upload</span>
+                  </button>
+                  <button
+                    onClick={() => {
+                      setEditingProduct({
+                        id: `prod-${Date.now()}`,
+                        name: '',
+                        slug: '',
+                        description: '',
+                        price: 25.0,
+                        currency: 'USD',
+                        categoryId: categories[0]?.id || 'cat-skincare',
+                        sku: `NVL-${Math.floor(100 + Math.random() * 900)}`,
+                        stockQuantity: 20,
+                        isAvailable: true,
+                        isFeatured: false,
+                        isNewArrival: true,
+                        isBestSeller: false,
+                        images: ['/images/products/avalon_eclat.jpg'],
+                        createdAt: new Date().toISOString(),
+                        updatedAt: new Date().toISOString()
+                      });
+                      setIsProductModalOpen(true);
+                    }}
+                    className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-[#8B42C9] to-[#C99A35] dark:from-[#A855F7] dark:to-[#CA8A04] text-white dark:text-[#0A0710] font-semibold text-xs flex items-center gap-1.5 shadow-md cursor-pointer"
+                  >
+                    <Plus className="w-4 h-4" />
+                    <span>Add New Product</span>
+                  </button>
+                </div>
               </div>
 
-              <div className="bg-[#120D1B] rounded-2xl border border-[#261B36] overflow-hidden">
+              <div className="bg-white dark:bg-[#120D1B] rounded-2xl border border-[#E4DDD0] dark:border-[#261B36] overflow-hidden shadow-xs dark:shadow-none">
                 <div className="overflow-x-auto">
                   <table className="w-full text-left text-xs">
                     <thead>
-                      <tr className="bg-[#171022] text-[#8C829B] border-b border-[#241933]">
+                      <tr className="bg-[#FAF8F4] dark:bg-[#171022] text-[#746B78] dark:text-[#8C829B] border-b border-[#E4DDD0] dark:border-[#241933]">
                         <th className="p-4">Product</th>
                         <th className="p-4">Category</th>
                         <th className="p-4">Price</th>
@@ -618,37 +699,61 @@ create policy "Allow delete from category-images" on storage.objects
                         <th className="p-4 text-right">Actions</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-[#241933]">
+                    <tbody className="divide-y divide-[#E4DDD0] dark:divide-[#241933]">
                       {products.map(p => {
                         const cat = categories.find(c => c.id === p.categoryId);
                         return (
-                          <tr key={p.id} className="hover:bg-[#1A1227]">
+                          <tr key={p.id} className="hover:bg-[#FAF8F4] dark:hover:bg-[#1A1227]">
                             <td className="p-4 flex items-center gap-3">
                               <img
                                 src={p.images[0]}
                                 alt={p.name}
                                 referrerPolicy="no-referrer"
                                 onError={handleImageError}
-                                className="w-10 h-10 rounded-lg object-cover bg-[#221735] shrink-0"
+                                className="w-10 h-10 rounded-lg object-cover bg-[#F2EBDD] dark:bg-[#221735] shrink-0"
                               />
                               <div>
-                                <p className="font-semibold text-[#F3EFEA]">{p.name}</p>
-                                <p className="text-[11px] text-[#8C829B]">SKU: {p.sku}</p>
+                                <p className="font-semibold text-[#211B25] dark:text-[#F3EFEA]">{p.name}</p>
+                                <p className="text-[11px] text-[#746B78] dark:text-[#8C829B]">
+                                  SKU: {p.sku}
+                                  {p.brand ? ` • ${p.brand}` : ''}
+                                </p>
                               </div>
                             </td>
-                            <td className="p-4 text-[#C5B9D8]">{cat?.name || 'Essentials'}</td>
-                            <td className="p-4 font-semibold text-[#F5D061] tabular-nums">
-                              {settings.currency}{p.price.toFixed(2)}
+                            <td className="p-4 text-[#524858] dark:text-[#C5B9D8]">{cat?.name || 'Essentials'}</td>
+                            <td className="p-4 font-semibold text-[#9E751C] dark:text-[#F5D061] tabular-nums">
+                              {settings.currency}
+                              {p.price.toFixed(2)}
                             </td>
                             <td className="p-4">
-                              <span className={`px-2 py-0.5 rounded text-[11px] font-medium ${p.stockQuantity > 5 ? 'bg-emerald-950/60 text-emerald-300' : p.stockQuantity > 0 ? 'bg-amber-950/60 text-amber-300' : 'bg-red-950/60 text-red-300'}`}>
+                              <span
+                                className={`px-2 py-0.5 rounded text-[11px] font-medium ${
+                                  p.stockQuantity > 5
+                                    ? 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300'
+                                    : p.stockQuantity > 0
+                                      ? 'bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300'
+                                      : 'bg-red-50 dark:bg-red-950/60 text-red-700 dark:text-red-300'
+                                }`}
+                              >
                                 {p.stockQuantity} in stock
                               </span>
                             </td>
                             <td className="p-4 space-x-1">
-                              {p.isFeatured && <span className="text-[10px] bg-[#2E1E4B] text-[#C084FC] px-1.5 py-0.5 rounded">Featured</span>}
-                              {p.isNewArrival && <span className="text-[10px] bg-[#362716] text-[#F5D061] px-1.5 py-0.5 rounded">New</span>}
-                              {p.isBestSeller && <span className="text-[10px] bg-[#221B35] text-[#E2D4B7] px-1.5 py-0.5 rounded">Favourite</span>}
+                              {p.isFeatured && (
+                                <span className="text-[10px] bg-purple-100 dark:bg-[#2E1E4B] text-[#8B42C9] dark:text-[#C084FC] px-1.5 py-0.5 rounded">
+                                  Featured
+                                </span>
+                              )}
+                              {p.isNewArrival && (
+                                <span className="text-[10px] bg-amber-100 dark:bg-[#362716] text-[#9E751C] dark:text-[#F5D061] px-1.5 py-0.5 rounded">
+                                  New
+                                </span>
+                              )}
+                              {p.isBestSeller && (
+                                <span className="text-[10px] bg-[#F2EBDD] dark:bg-[#221B35] text-[#524858] dark:text-[#E2D4B7] px-1.5 py-0.5 rounded">
+                                  Favourite
+                                </span>
+                              )}
                             </td>
                             <td className="p-4 text-right space-x-2">
                               <button
@@ -656,14 +761,14 @@ create policy "Allow delete from category-images" on storage.objects
                                   setEditingProduct({ ...p });
                                   setIsProductModalOpen(true);
                                 }}
-                                className="p-1.5 text-[#C5B9D8] hover:text-[#F5D061] rounded hover:bg-[#251A38]"
+                                className="p-1.5 text-[#524858] dark:text-[#C5B9D8] hover:text-[#8B42C9] dark:hover:text-[#F5D061] rounded hover:bg-[#F2EBDD] dark:hover:bg-[#251A38] cursor-pointer"
                                 title="Edit Product"
                               >
                                 <Edit className="w-3.5 h-3.5" />
                               </button>
                               <button
                                 onClick={() => handleDeleteProduct(p.id)}
-                                className="p-1.5 text-[#8C829B] hover:text-red-400 rounded hover:bg-[#251A38]"
+                                className="p-1.5 text-[#746B78] dark:text-[#8C829B] hover:text-red-600 dark:hover:text-red-400 rounded hover:bg-[#F2EBDD] dark:hover:bg-[#251A38] cursor-pointer"
                                 title="Delete Product"
                               >
                                 <Trash2 className="w-3.5 h-3.5" />
@@ -679,13 +784,18 @@ create policy "Allow delete from category-images" on storage.objects
             </div>
           )}
 
+          {/* TAB: AI PRODUCT CATALOGUE / BULK UPLOAD */}
+          {activeTab === 'ai-bulk' && <AIBulkProductUploader />}
+
           {/* TAB 3: CATEGORIES */}
           {activeTab === 'categories' && (
             <div className="space-y-6">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                 <div>
-                  <h1 className="text-2xl font-serif font-bold text-[#F3EFEA]">Category Management</h1>
-                  <p className="text-xs text-[#9C8EB2]">Organize your store collections (Skincare, Makeup, Fragrances, Body Care, etc.).</p>
+                  <h1 className="text-2xl font-serif font-bold text-[#211B25] dark:text-[#F3EFEA]">Category Management</h1>
+                  <p className="text-xs text-[#746B78] dark:text-[#9C8EB2]">
+                    Organize your store collections (Skincare, Makeup, Fragrances, Body Care, etc.).
+                  </p>
                 </div>
                 <button
                   onClick={() => {
@@ -701,7 +811,7 @@ create policy "Allow delete from category-images" on storage.objects
                     });
                     setIsCategoryModalOpen(true);
                   }}
-                  className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-[#A855F7] to-[#CA8A04] text-[#0A0710] font-semibold text-xs flex items-center gap-1.5 shadow-md cursor-pointer"
+                  className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-[#8B42C9] to-[#C99A35] dark:from-[#A855F7] dark:to-[#CA8A04] text-white dark:text-[#0A0710] font-semibold text-xs flex items-center gap-1.5 shadow-md cursor-pointer"
                 >
                   <Plus className="w-4 h-4" />
                   <span>Add New Category</span>
@@ -710,30 +820,41 @@ create policy "Allow delete from category-images" on storage.objects
 
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
                 {categories.map(c => (
-                  <div key={c.id} className="bg-[#120D1B] rounded-2xl border border-[#261B36] overflow-hidden flex flex-col justify-between">
-                    <div className="h-32 bg-[#1A1227] overflow-hidden relative">
-                      <img src={c.imageUrl} alt={c.name} referrerPolicy="no-referrer" onError={handleImageError} className="w-full h-full object-cover" />
-                      <div className="absolute inset-0 bg-gradient-to-t from-[#120D1B] via-transparent to-transparent" />
+                  <div
+                    key={c.id}
+                    className="bg-white dark:bg-[#120D1B] rounded-2xl border border-[#E4DDD0] dark:border-[#261B36] overflow-hidden flex flex-col justify-between shadow-xs dark:shadow-none"
+                  >
+                    <div className="h-32 bg-[#F2EBDD] dark:bg-[#1A1227] overflow-hidden relative">
+                      <img
+                        src={c.imageUrl}
+                        alt={c.name}
+                        referrerPolicy="no-referrer"
+                        onError={handleImageError}
+                        className="w-full h-full object-cover"
+                      />
+                      <div className="absolute inset-0 bg-gradient-to-t from-white/75 dark:from-[#120D1B] via-transparent to-transparent" />
                     </div>
                     <div className="p-5 space-y-2">
                       <div className="flex items-center justify-between">
-                        <h3 className="text-base font-serif font-bold text-[#F3EFEA]">{c.name}</h3>
-                        <span className="text-[10px] px-2 py-0.5 rounded bg-[#201533] text-[#F5D061]">Order: {c.displayOrder}</span>
+                        <h3 className="text-base font-serif font-bold text-[#211B25] dark:text-[#F3EFEA]">{c.name}</h3>
+                        <span className="text-[10px] px-2 py-0.5 rounded bg-[#F2EBDD] dark:bg-[#201533] text-[#9E751C] dark:text-[#F5D061]">
+                          Order: {c.displayOrder}
+                        </span>
                       </div>
-                      <p className="text-xs text-[#9C8EB2] line-clamp-2">{c.description}</p>
-                      <div className="pt-3 border-t border-[#241933] flex justify-end gap-2">
+                      <p className="text-xs text-[#746B78] dark:text-[#9C8EB2] line-clamp-2">{c.description}</p>
+                      <div className="pt-3 border-t border-[#E4DDD0] dark:border-[#241933] flex justify-end gap-2">
                         <button
                           onClick={() => {
                             setEditingCategory({ ...c });
                             setIsCategoryModalOpen(true);
                           }}
-                          className="px-3 py-1 rounded-lg bg-[#1F162E] text-xs text-[#E2D4B7] hover:text-[#FFFFFF]"
+                          className="px-3 py-1 rounded-lg bg-[#FAF8F4] dark:bg-[#1F162E] border border-[#E4DDD0] dark:border-transparent text-xs text-[#211B25] dark:text-[#E2D4B7] hover:bg-[#F2EBDD] dark:hover:text-[#FFFFFF] cursor-pointer"
                         >
                           Edit
                         </button>
                         <button
                           onClick={() => handleDeleteCategory(c.id)}
-                          className="px-3 py-1 rounded-lg bg-red-950/40 text-xs text-red-400 hover:text-red-300"
+                          className="px-3 py-1 rounded-lg bg-red-50 dark:bg-red-950/40 text-xs text-red-600 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300 cursor-pointer"
                         >
                           Delete
                         </button>
@@ -750,27 +871,29 @@ create policy "Allow delete from category-images" on storage.objects
             <div className="space-y-6">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                 <div>
-                  <h1 className="text-2xl font-serif font-bold text-[#F3EFEA]">Order Management</h1>
-                  <p className="text-xs text-[#9C8EB2]">Track, update status, and manage Monrovia delivery or pickup orders.</p>
+                  <h1 className="text-2xl font-serif font-bold text-[#211B25] dark:text-[#F3EFEA]">Order Management</h1>
+                  <p className="text-xs text-[#746B78] dark:text-[#9C8EB2]">
+                    Track, update status, and manage Monrovia delivery or pickup orders.
+                  </p>
                 </div>
               </div>
 
               {/* Filter controls */}
-              <div className="flex flex-col sm:flex-row gap-3 bg-[#120D1B] p-4 rounded-2xl border border-[#261B36]">
+              <div className="flex flex-col sm:flex-row gap-3 bg-white dark:bg-[#120D1B] p-4 rounded-2xl border border-[#E4DDD0] dark:border-[#261B36]">
                 <div className="relative flex-1">
-                  <Search className="w-4 h-4 text-[#8C829B] absolute left-3.5 top-1/2 -translate-y-1/2" />
+                  <Search className="w-4 h-4 text-[#746B78] dark:text-[#8C829B] absolute left-3.5 top-1/2 -translate-y-1/2" />
                   <input
                     type="text"
                     value={orderSearch}
                     onChange={e => setOrderSearch(e.target.value)}
                     placeholder="Search by order ref, customer name, phone, area..."
-                    className="w-full pl-10 pr-4 py-2 bg-[#1A1227] border border-[#34244C] rounded-xl text-xs text-[#F3EFEA] focus:outline-none focus:border-[#A855F7]"
+                    className="w-full pl-10 pr-4 py-2 bg-[#FAF8F4] dark:bg-[#1A1227] border border-[#E4DDD0] dark:border-[#34244C] rounded-xl text-xs text-[#211B25] dark:text-[#F3EFEA] focus:outline-none focus:border-[#8B42C9] dark:focus:border-[#A855F7]"
                   />
                 </div>
                 <select
                   value={orderStatusFilter}
                   onChange={e => setOrderStatusFilter(e.target.value)}
-                  className="bg-[#1A1227] border border-[#34244C] rounded-xl text-xs text-[#E2D4B7] px-3 py-2 focus:outline-none"
+                  className="bg-[#FAF8F4] dark:bg-[#1A1227] border border-[#E4DDD0] dark:border-[#34244C] rounded-xl text-xs text-[#211B25] dark:text-[#E2D4B7] px-3 py-2 focus:outline-none"
                 >
                   <option value="all">All Statuses ({orders.length})</option>
                   <option value="Pending">Pending</option>
@@ -784,11 +907,11 @@ create policy "Allow delete from category-images" on storage.objects
               </div>
 
               {/* Order List Table */}
-              <div className="bg-[#120D1B] rounded-2xl border border-[#261B36] overflow-hidden">
+              <div className="bg-white dark:bg-[#120D1B] rounded-2xl border border-[#E4DDD0] dark:border-[#261B36] overflow-hidden shadow-xs dark:shadow-none">
                 <div className="overflow-x-auto">
                   <table className="w-full text-left text-xs">
                     <thead>
-                      <tr className="bg-[#171022] text-[#8C829B] border-b border-[#241933]">
+                      <tr className="bg-[#FAF8F4] dark:bg-[#171022] text-[#746B78] dark:text-[#8C829B] border-b border-[#E4DDD0] dark:border-[#241933]">
                         <th className="p-4">Reference</th>
                         <th className="p-4">Customer & Phone</th>
                         <th className="p-4">Destination</th>
@@ -798,27 +921,28 @@ create policy "Allow delete from category-images" on storage.objects
                         <th className="p-4 text-right">Details</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-[#241933]">
+                    <tbody className="divide-y divide-[#E4DDD0] dark:divide-[#241933]">
                       {filteredOrders.map(o => (
-                        <tr key={o.id} className="hover:bg-[#1A1227]">
-                          <td className="p-4 font-mono font-bold text-[#F5D061]">{o.orderReference}</td>
+                        <tr key={o.id} className="hover:bg-[#FAF8F4] dark:hover:bg-[#1A1227]">
+                          <td className="p-4 font-mono font-bold text-[#9E751C] dark:text-[#F5D061]">{o.orderReference}</td>
                           <td className="p-4">
-                            <p className="font-semibold text-[#F3EFEA]">{o.customerName}</p>
-                            <p className="text-[11px] text-[#A855F7]">{o.customerPhone}</p>
+                            <p className="font-semibold text-[#211B25] dark:text-[#F3EFEA]">{o.customerName}</p>
+                            <p className="text-[11px] text-[#8B42C9] dark:text-[#A855F7]">{o.customerPhone}</p>
                           </td>
-                          <td className="p-4 text-[#C5B9D8]">
+                          <td className="p-4 text-[#524858] dark:text-[#C5B9D8]">
                             <p>{o.deliveryLocation}</p>
-                            <p className="text-[10px] text-[#8C829B]">{o.deliveryMethod}</p>
+                            <p className="text-[10px] text-[#746B78] dark:text-[#8C829B]">{o.deliveryMethod}</p>
                           </td>
-                          <td className="p-4 text-[#C5B9D8]">{o.items.length} items</td>
-                          <td className="p-4 font-semibold text-[#F5D061] tabular-nums">
-                            {o.currency}{o.totalAmount.toFixed(2)}
+                          <td className="p-4 text-[#524858] dark:text-[#C5B9D8]">{o.items.length} items</td>
+                          <td className="p-4 font-semibold text-[#9E751C] dark:text-[#F5D061] tabular-nums">
+                            {o.currency}
+                            {o.totalAmount.toFixed(2)}
                           </td>
                           <td className="p-4">
                             <select
                               value={o.orderStatus}
                               onChange={e => handleUpdateOrderStatus(o.id, e.target.value as OrderStatus)}
-                              className="bg-[#1A1227] border border-[#3A2854] text-[11px] text-[#F5D061] px-2 py-1 rounded-lg focus:outline-none cursor-pointer"
+                              className="bg-[#FAF8F4] dark:bg-[#1A1227] border border-[#E4DDD0] dark:border-[#3A2854] text-[11px] text-[#9E751C] dark:text-[#F5D061] px-2 py-1 rounded-lg focus:outline-none cursor-pointer"
                             >
                               <option value="Pending">Pending</option>
                               <option value="Confirmed">Confirmed</option>
@@ -832,7 +956,7 @@ create policy "Allow delete from category-images" on storage.objects
                           <td className="p-4 text-right">
                             <button
                               onClick={() => setSelectedOrder(o)}
-                              className="px-3 py-1 rounded-lg bg-[#221637] text-xs text-[#E2D4B7] hover:text-[#FFFFFF]"
+                              className="px-3 py-1 rounded-lg bg-[#F2EBDD] dark:bg-[#221637] text-xs text-[#211B25] dark:text-[#E2D4B7] hover:opacity-90 cursor-pointer"
                             >
                               View
                             </button>
@@ -850,14 +974,16 @@ create policy "Allow delete from category-images" on storage.objects
           {activeTab === 'customers' && (
             <div className="space-y-6">
               <div>
-                <h1 className="text-2xl font-serif font-bold text-[#F3EFEA]">Customer Directory</h1>
-                <p className="text-xs text-[#9C8EB2]">Customer records collected through orders in Monrovia.</p>
+                <h1 className="text-2xl font-serif font-bold text-[#211B25] dark:text-[#F3EFEA]">Customer Directory</h1>
+                <p className="text-xs text-[#746B78] dark:text-[#9C8EB2]">
+                  Customer records collected through orders in Monrovia.
+                </p>
               </div>
 
-              <div className="bg-[#120D1B] rounded-2xl border border-[#261B36] overflow-hidden">
+              <div className="bg-white dark:bg-[#120D1B] rounded-2xl border border-[#E4DDD0] dark:border-[#261B36] overflow-hidden shadow-xs dark:shadow-none">
                 <table className="w-full text-left text-xs">
                   <thead>
-                    <tr className="bg-[#171022] text-[#8C829B] border-b border-[#241933]">
+                    <tr className="bg-[#FAF8F4] dark:bg-[#171022] text-[#746B78] dark:text-[#8C829B] border-b border-[#E4DDD0] dark:border-[#241933]">
                       <th className="p-4">Customer Name</th>
                       <th className="p-4">Phone Number</th>
                       <th className="p-4">Primary Delivery Area</th>
@@ -865,15 +991,16 @@ create policy "Allow delete from category-images" on storage.objects
                       <th className="p-4 text-right">Total Spent</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-[#241933]">
+                  <tbody className="divide-y divide-[#E4DDD0] dark:divide-[#241933]">
                     {customerList.map((c, i) => (
-                      <tr key={i} className="hover:bg-[#1A1227]">
-                        <td className="p-4 font-semibold text-[#F3EFEA]">{c.name}</td>
-                        <td className="p-4 text-[#F5D061]">{c.phone}</td>
-                        <td className="p-4 text-[#C5B9D8]">{c.location}</td>
-                        <td className="p-4 text-[#C5B9D8]">{c.orderCount}</td>
-                        <td className="p-4 text-right font-serif font-bold text-[#F5D061] tabular-nums">
-                          {settings.currency}{c.totalSpent.toFixed(2)}
+                      <tr key={i} className="hover:bg-[#FAF8F4] dark:hover:bg-[#1A1227]">
+                        <td className="p-4 font-semibold text-[#211B25] dark:text-[#F3EFEA]">{c.name}</td>
+                        <td className="p-4 text-[#9E751C] dark:text-[#F5D061]">{c.phone}</td>
+                        <td className="p-4 text-[#524858] dark:text-[#C5B9D8]">{c.location}</td>
+                        <td className="p-4 text-[#524858] dark:text-[#C5B9D8]">{c.orderCount}</td>
+                        <td className="p-4 text-right font-serif font-bold text-[#9E751C] dark:text-[#F5D061] tabular-nums">
+                          {settings.currency}
+                          {c.totalSpent.toFixed(2)}
                         </td>
                       </tr>
                     ))}
@@ -887,30 +1014,37 @@ create policy "Allow delete from category-images" on storage.objects
           {activeTab === 'enquiries' && (
             <div className="space-y-6">
               <div>
-                <h1 className="text-2xl font-serif font-bold text-[#F3EFEA]">Customer Enquiries</h1>
-                <p className="text-xs text-[#9C8EB2]">Messages sent via the website contact form.</p>
+                <h1 className="text-2xl font-serif font-bold text-[#211B25] dark:text-[#F3EFEA]">Customer Enquiries</h1>
+                <p className="text-xs text-[#746B78] dark:text-[#9C8EB2]">Messages sent via the website contact form.</p>
               </div>
 
               <div className="space-y-4">
                 {enquiries.length === 0 ? (
-                  <p className="text-xs text-[#8C829B]">No customer enquiries received yet.</p>
+                  <p className="text-xs text-[#746B78] dark:text-[#8C829B]">No customer enquiries received yet.</p>
                 ) : (
                   enquiries.map(enq => (
-                    <div key={enq.id} className="bg-[#120D1B] rounded-2xl border border-[#261B36] p-6 space-y-3">
-                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-[#241933] pb-3">
+                    <div
+                      key={enq.id}
+                      className="bg-white dark:bg-[#120D1B] rounded-2xl border border-[#E4DDD0] dark:border-[#261B36] p-6 space-y-3 shadow-xs dark:shadow-none"
+                    >
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-[#E4DDD0] dark:border-[#241933] pb-3">
                         <div>
-                          <h3 className="text-sm font-semibold text-[#F3EFEA]">{enq.subject}</h3>
-                          <p className="text-xs text-[#9C8EB2]">From: {enq.fullName} ({enq.phone}) {enq.email ? `• ${enq.email}` : ''}</p>
+                          <h3 className="text-sm font-semibold text-[#211B25] dark:text-[#F3EFEA]">{enq.subject}</h3>
+                          <p className="text-xs text-[#746B78] dark:text-[#9C8EB2]">
+                            From: {enq.fullName} ({enq.phone}) {enq.email ? `• ${enq.email}` : ''}
+                          </p>
                         </div>
-                        <span className="text-[11px] text-[#A855F7]">{new Date(enq.createdAt).toLocaleDateString()}</span>
+                        <span className="text-[11px] text-[#8B42C9] dark:text-[#A855F7]">
+                          {new Date(enq.createdAt).toLocaleDateString()}
+                        </span>
                       </div>
-                      <p className="text-xs text-[#C5B9D8] leading-relaxed">{enq.message}</p>
+                      <p className="text-xs text-[#524858] dark:text-[#C5B9D8] leading-relaxed">{enq.message}</p>
                       <div className="pt-2 flex gap-3">
                         <a
                           href={`https://wa.me/${enq.phone.replace(/[^0-9]/g, '')}`}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="px-3.5 py-1.5 rounded-lg bg-[#25D366]/20 text-[#25D366] text-xs font-semibold hover:bg-[#25D366]/30 inline-flex items-center gap-1.5"
+                          className="px-3.5 py-1.5 rounded-lg bg-[#25D366]/15 dark:bg-[#25D366]/20 text-emerald-700 dark:text-[#25D366] text-xs font-semibold hover:bg-[#25D366]/25 inline-flex items-center gap-1.5"
                         >
                           <MessageSquare className="w-3.5 h-3.5" />
                           <span>Reply via WhatsApp</span>
@@ -927,25 +1061,32 @@ create policy "Allow delete from category-images" on storage.objects
           {activeTab === 'content' && (
             <div className="max-w-3xl space-y-6">
               <div>
-                <h1 className="text-2xl font-serif font-bold text-[#F3EFEA]">Homepage & Brand Content</h1>
-                <p className="text-xs text-[#9C8EB2]">Edit announcement bar, hero section, and social media handles.</p>
+                <h1 className="text-2xl font-serif font-bold text-[#211B25] dark:text-[#F3EFEA]">
+                  Homepage & Brand Content
+                </h1>
+                <p className="text-xs text-[#746B78] dark:text-[#9C8EB2]">
+                  Edit announcement bar, hero section, and social media handles.
+                </p>
               </div>
 
-              <form onSubmit={handleSaveSettings} className="bg-[#120D1B] rounded-2xl border border-[#261B36] p-6 space-y-4">
+              <form
+                onSubmit={handleSaveSettings}
+                className="bg-white dark:bg-[#120D1B] rounded-2xl border border-[#E4DDD0] dark:border-[#261B36] p-6 space-y-4 shadow-xs dark:shadow-none"
+              >
                 {settingsSaved && (
-                  <div className="p-3 rounded-xl bg-emerald-950/60 border border-emerald-500/50 text-emerald-300 text-xs flex items-center gap-2">
-                    <Check className="w-4 h-4 text-emerald-400" />
+                  <div className="p-3 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-500/50 text-emerald-700 dark:text-emerald-300 text-xs flex items-center gap-2">
+                    <Check className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
                     <span>Content updated successfully!</span>
                   </div>
                 )}
 
                 <div className="space-y-1.5">
-                  <label className="text-xs font-semibold text-[#C5B9D8]">Announcement Bar Text</label>
+                  <label className="text-xs font-semibold text-[#524858] dark:text-[#C5B9D8]">Announcement Bar Text</label>
                   <input
                     type="text"
                     value={settingsForm.announcementText}
                     onChange={e => setSettingsForm({ ...settingsForm, announcementText: e.target.value })}
-                    className="w-full px-4 py-2 bg-[#1A1227] border border-[#34244C] rounded-xl text-xs text-[#F3EFEA]"
+                    className={inputClass}
                   />
                 </div>
 
@@ -955,69 +1096,285 @@ create policy "Allow delete from category-images" on storage.objects
                     id="announcementToggle"
                     checked={settingsForm.announcementEnabled}
                     onChange={e => setSettingsForm({ ...settingsForm, announcementEnabled: e.target.checked })}
-                    className="rounded bg-[#1A1227] border-[#34244C] text-[#A855F7]"
+                    className="rounded bg-[#FAF8F4] dark:bg-[#1A1227] border-[#E4DDD0] dark:border-[#34244C] text-[#8B42C9] dark:text-[#A855F7]"
                   />
-                  <label htmlFor="announcementToggle" className="text-xs text-[#C5B9D8]">
+                  <label htmlFor="announcementToggle" className="text-xs text-[#524858] dark:text-[#C5B9D8]">
                     Show Announcement Bar
                   </label>
                 </div>
 
-                <div className="space-y-1.5 pt-3 border-t border-[#241933]">
-                  <label className="text-xs font-semibold text-[#C5B9D8]">Hero Headline</label>
+                <div className="space-y-1.5 pt-3 border-t border-[#E4DDD0] dark:border-[#241933]">
+                  <label className="text-xs font-semibold text-[#524858] dark:text-[#C5B9D8]">Hero Headline</label>
                   <input
                     type="text"
                     value={settingsForm.heroHeadline}
                     onChange={e => setSettingsForm({ ...settingsForm, heroHeadline: e.target.value })}
-                    className="w-full px-4 py-2 bg-[#1A1227] border border-[#34244C] rounded-xl text-xs text-[#F3EFEA]"
+                    className={inputClass}
                   />
                 </div>
 
                 <div className="space-y-1.5">
-                  <label className="text-xs font-semibold text-[#C5B9D8]">Hero Supporting Text</label>
+                  <label className="text-xs font-semibold text-[#524858] dark:text-[#C5B9D8]">Hero Supporting Text</label>
                   <textarea
                     rows={2}
                     value={settingsForm.heroSubtitle}
                     onChange={e => setSettingsForm({ ...settingsForm, heroSubtitle: e.target.value })}
-                    className="w-full px-4 py-2 bg-[#1A1227] border border-[#34244C] rounded-xl text-xs text-[#F3EFEA]"
+                    className={inputClass}
                   />
                 </div>
 
                 <div className="space-y-1.5">
-                  <label className="text-xs font-semibold text-[#C5B9D8]">Brand Introduction Copy</label>
+                  <label className="text-xs font-semibold text-[#524858] dark:text-[#C5B9D8]">Brand Introduction Copy</label>
                   <textarea
                     rows={3}
                     value={settingsForm.brandIntro}
                     onChange={e => setSettingsForm({ ...settingsForm, brandIntro: e.target.value })}
-                    className="w-full px-4 py-2 bg-[#1A1227] border border-[#34244C] rounded-xl text-xs text-[#F3EFEA]"
+                    className={inputClass}
                   />
                 </div>
 
-                <div className="space-y-1.5 pt-3 border-t border-[#241933]">
-                  <label className="text-xs font-semibold text-[#C5B9D8]">Instagram Profile URL</label>
+                <div className="space-y-1.5 pt-3 border-t border-[#E4DDD0] dark:border-[#241933]">
+                  <label className="text-xs font-semibold text-[#524858] dark:text-[#C5B9D8]">Instagram Profile URL</label>
                   <input
                     type="text"
                     value={settingsForm.instagramUrl}
                     onChange={e => setSettingsForm({ ...settingsForm, instagramUrl: e.target.value })}
-                    className="w-full px-4 py-2 bg-[#1A1227] border border-[#34244C] rounded-xl text-xs text-[#F3EFEA]"
+                    className={inputClass}
                   />
                 </div>
 
                 <div className="space-y-1.5">
-                  <label className="text-xs font-semibold text-[#C5B9D8]">TikTok Profile URL</label>
+                  <label className="text-xs font-semibold text-[#524858] dark:text-[#C5B9D8]">TikTok Profile URL</label>
                   <input
                     type="text"
                     value={settingsForm.tiktokUrl}
                     onChange={e => setSettingsForm({ ...settingsForm, tiktokUrl: e.target.value })}
-                    className="w-full px-4 py-2 bg-[#1A1227] border border-[#34244C] rounded-xl text-xs text-[#F3EFEA]"
+                    className={inputClass}
                   />
                 </div>
 
                 <button
                   type="submit"
-                  className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-[#A855F7] to-[#CA8A04] text-[#0A0710] font-semibold text-xs uppercase tracking-wider"
+                  className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-[#8B42C9] to-[#C99A35] dark:from-[#A855F7] dark:to-[#CA8A04] text-white dark:text-[#0A0710] font-semibold text-xs uppercase tracking-wider cursor-pointer"
                 >
                   Save Homepage Content
                 </button>
+              </form>
+            </div>
+          )}
+
+          {/* TAB: PROMOTIONAL FLYER / VIDEO POP-UP */}
+          {activeTab === 'promotions' && (
+            <div className="max-w-3xl space-y-6">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div>
+                  <h1 className="text-2xl font-serif font-bold text-[#211B25] dark:text-[#F3EFEA]">
+                    Promotional Pop-Up Campaign
+                  </h1>
+                  <p className="text-xs text-[#746B78] dark:text-[#9C8EB2]">
+                    Manage the automated luxury promotional flyer or video pop-up displayed on the homepage.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsPromoPreviewOpen(true)}
+                  className="px-4 py-2.5 rounded-xl bg-white dark:bg-[#1A1227] border border-[#E4DDD0] dark:border-[#34244C] text-[#8B42C9] dark:text-[#F5D061] text-xs font-semibold flex items-center gap-2 hover:bg-[#F2EBDD] dark:hover:bg-[#251A38] transition-colors cursor-pointer shrink-0"
+                >
+                  <Eye className="w-4 h-4" />
+                  <span>Preview Pop-Up</span>
+                </button>
+              </div>
+
+              <form
+                onSubmit={handleSaveSettings}
+                className="bg-white dark:bg-[#120D1B] rounded-2xl border border-[#E4DDD0] dark:border-[#261B36] p-6 space-y-5 shadow-xs dark:shadow-none"
+              >
+                {settingsSaved && (
+                  <div className="p-3 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-500/50 text-emerald-700 dark:text-emerald-300 text-xs flex items-center gap-2">
+                    <Check className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                    <span>Promotional campaign settings saved!</span>
+                  </div>
+                )}
+
+                {/* Enable/Disable Campaign */}
+                <div className="flex items-center justify-between p-4 rounded-xl bg-[#FAF8F4] dark:bg-[#1A1227] border border-[#E4DDD0] dark:border-[#34244C]">
+                  <div>
+                    <p className="text-xs font-semibold text-[#211B25] dark:text-[#F3EFEA]">Enable Homepage Pop-Up</p>
+                    <p className="text-[11px] text-[#746B78] dark:text-[#9C8EB2]">
+                      Automatically present this promotional flyer when visitors open the storefront homepage.
+                    </p>
+                  </div>
+                  <label className="inline-flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={promo.enabled}
+                      onChange={e => updatePromoField('enabled', e.target.checked)}
+                      className="w-4 h-4 rounded text-[#8B42C9] dark:text-[#A855F7]"
+                    />
+                    <span className="text-xs font-semibold text-[#211B25] dark:text-[#F3EFEA]">
+                      {promo.enabled ? 'Active' : 'Disabled'}
+                    </span>
+                  </label>
+                </div>
+
+                {/* Media Type Switcher */}
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-[#524858] dark:text-[#C5B9D8]">Promotional Media Format</label>
+                  <div className="grid grid-cols-2 gap-3">
+                    <button
+                      type="button"
+                      onClick={() => updatePromoField('mediaType', 'video')}
+                      className={`py-2.5 px-4 rounded-xl border text-xs font-semibold cursor-pointer transition-colors ${
+                        promo.mediaType === 'video'
+                          ? 'bg-[#8B42C9]/10 dark:bg-[#25183B] border-[#8B42C9] dark:border-[#A855F7] text-[#8B42C9] dark:text-[#F5D061]'
+                          : 'bg-[#FAF8F4] dark:bg-[#1A1227] border-[#E4DDD0] dark:border-[#34244C] text-[#746B78] dark:text-[#9C8EB2]'
+                      }`}
+                    >
+                      Promotional Video (.mp4 / .webm)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => updatePromoField('mediaType', 'image')}
+                      className={`py-2.5 px-4 rounded-xl border text-xs font-semibold cursor-pointer transition-colors ${
+                        promo.mediaType === 'image'
+                          ? 'bg-[#8B42C9]/10 dark:bg-[#25183B] border-[#8B42C9] dark:border-[#A855F7] text-[#8B42C9] dark:text-[#F5D061]'
+                          : 'bg-[#FAF8F4] dark:bg-[#1A1227] border-[#E4DDD0] dark:border-[#34244C] text-[#746B78] dark:text-[#9C8EB2]'
+                      }`}
+                    >
+                      Static Flyer Image (.jpg / .png / .webp)
+                    </button>
+                  </div>
+                </div>
+
+                {/* Media Uploader */}
+                <PromotionalMediaUploader
+                  mediaType={promo.mediaType}
+                  mediaUrl={promo.mediaUrl}
+                  onMediaChange={url => updatePromoField('mediaUrl', url)}
+                />
+
+                {/* Poster / Fallback Image URL */}
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-[#524858] dark:text-[#C5B9D8]">
+                    Poster / Fallback Image URL
+                  </label>
+                  <input
+                    type="text"
+                    value={promo.posterUrl || ''}
+                    onChange={e => updatePromoField('posterUrl', e.target.value)}
+                    placeholder="/images/hero/hero_beauty_cosmetics.jpg"
+                    className={inputClass}
+                  />
+                  <p className="text-[11px] text-[#746B78] dark:text-[#9C8EB2]">
+                    Displayed while video buffers or automatically used if a video file is unavailable.
+                  </p>
+                </div>
+
+                {/* Campaign Title & Subtitle */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-3 border-t border-[#E4DDD0] dark:border-[#241933]">
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-semibold text-[#524858] dark:text-[#C5B9D8]">Campaign Title</label>
+                    <input
+                      type="text"
+                      value={promo.title}
+                      onChange={e => updatePromoField('title', e.target.value)}
+                      className={inputClass}
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-semibold text-[#524858] dark:text-[#C5B9D8]">CTA Button Label</label>
+                    <input
+                      type="text"
+                      value={promo.ctaText}
+                      onChange={e => updatePromoField('ctaText', e.target.value)}
+                      placeholder="EXPLORE NOVALUXE"
+                      className={inputClass}
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-[#524858] dark:text-[#C5B9D8]">Campaign Supporting Copy</label>
+                  <textarea
+                    rows={2}
+                    value={promo.subtitle}
+                    onChange={e => updatePromoField('subtitle', e.target.value)}
+                    className={inputClass}
+                  />
+                </div>
+
+                {/* Destination & Frequency */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-semibold text-[#524858] dark:text-[#C5B9D8]">CTA Destination Page</label>
+                    <select
+                      value={promo.destinationPath}
+                      onChange={e => updatePromoField('destinationPath', e.target.value)}
+                      className={inputClass}
+                    >
+                      <option value="/shop">Shop Catalogue (/shop)</option>
+                      <option value="/about">About NOVALUXE (/about)</option>
+                      <option value="/contact">Contact &amp; Enquiries (/contact)</option>
+                      <option value="/">Homepage (/)</option>
+                    </select>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-semibold text-[#524858] dark:text-[#C5B9D8]">Display Frequency</label>
+                    <select
+                      value={promo.frequency}
+                      onChange={e => updatePromoField('frequency', e.target.value as PromoFrequency)}
+                      className={inputClass}
+                    >
+                      <option value="once_per_session">Once Per Session</option>
+                      <option value="once_per_day">Once Per Day (24h)</option>
+                      <option value="always">Show on Every Homepage Visit</option>
+                    </select>
+                  </div>
+                </div>
+
+                {/* Optional Schedule Dates */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-semibold text-[#524858] dark:text-[#C5B9D8]">
+                      Start Date (Optional)
+                    </label>
+                    <input
+                      type="date"
+                      value={promo.startDate}
+                      onChange={e => updatePromoField('startDate', e.target.value)}
+                      className={inputClass}
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-semibold text-[#524858] dark:text-[#C5B9D8]">
+                      End Date (Optional)
+                    </label>
+                    <input
+                      type="date"
+                      value={promo.endDate}
+                      onChange={e => updatePromoField('endDate', e.target.value)}
+                      className={inputClass}
+                    />
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-3 pt-2">
+                  <button
+                    type="submit"
+                    className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-[#8B42C9] to-[#C99A35] dark:from-[#A855F7] dark:to-[#CA8A04] text-white dark:text-[#0A0710] font-semibold text-xs uppercase tracking-wider cursor-pointer"
+                  >
+                    Save Campaign Settings
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setIsPromoPreviewOpen(true)}
+                    className="px-5 py-2.5 rounded-xl bg-[#FAF8F4] dark:bg-[#1A1227] border border-[#E4DDD0] dark:border-[#34244C] text-[#211B25] dark:text-[#E2D4B7] text-xs font-semibold flex items-center gap-1.5 hover:bg-[#F2EBDD] dark:hover:bg-[#251A38] cursor-pointer"
+                  >
+                    <Eye className="w-3.5 h-3.5" />
+                    <span>Test Preview Pop-Up</span>
+                  </button>
+                </div>
               </form>
             </div>
           )}
@@ -1027,8 +1384,12 @@ create policy "Allow delete from category-images" on storage.objects
             <div className="max-w-3xl space-y-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <h1 className="text-2xl font-serif font-bold text-[#F3EFEA]">Official Business Settings</h1>
-                  <p className="text-xs text-[#9C8EB2]">Location, WhatsApp ordering number, contact lines, and delivery fees.</p>
+                  <h1 className="text-2xl font-serif font-bold text-[#211B25] dark:text-[#F3EFEA]">
+                    Official Business Settings
+                  </h1>
+                  <p className="text-xs text-[#746B78] dark:text-[#9C8EB2]">
+                    Location, WhatsApp ordering number, contact lines, and delivery fees.
+                  </p>
                 </div>
                 <button
                   onClick={() => {
@@ -1038,88 +1399,93 @@ create policy "Allow delete from category-images" on storage.objects
                       setSettingsForm(store.getSettings());
                     }
                   }}
-                  className="px-3 py-1.5 rounded-lg bg-[#25183B] text-xs text-[#E2D4B7] hover:text-[#FFFFFF]"
+                  className="px-3 py-1.5 rounded-lg bg-[#F2EBDD] dark:bg-[#25183B] text-xs text-[#211B25] dark:text-[#E2D4B7] border border-[#E4DDD0] dark:border-transparent cursor-pointer"
                 >
                   Reset Defaults
                 </button>
               </div>
 
-              <form onSubmit={handleSaveSettings} className="bg-[#120D1B] rounded-2xl border border-[#261B36] p-6 space-y-4">
+              <form
+                onSubmit={handleSaveSettings}
+                className="bg-white dark:bg-[#120D1B] rounded-2xl border border-[#E4DDD0] dark:border-[#261B36] p-6 space-y-4 shadow-xs dark:shadow-none"
+              >
                 {settingsSaved && (
-                  <div className="p-3 rounded-xl bg-emerald-950/60 border border-emerald-500/50 text-emerald-300 text-xs flex items-center gap-2">
-                    <Check className="w-4 h-4 text-emerald-400" />
+                  <div className="p-3 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-500/50 text-emerald-700 dark:text-emerald-300 text-xs flex items-center gap-2">
+                    <Check className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
                     <span>Business settings updated!</span>
                   </div>
                 )}
 
                 <div className="space-y-1.5">
-                  <label className="text-xs font-semibold text-[#C5B9D8]">Business Name</label>
+                  <label className="text-xs font-semibold text-[#524858] dark:text-[#C5B9D8]">Business Name</label>
                   <input
                     type="text"
                     value={settingsForm.businessName}
                     onChange={e => setSettingsForm({ ...settingsForm, businessName: e.target.value })}
-                    className="w-full px-4 py-2 bg-[#1A1227] border border-[#34244C] rounded-xl text-xs text-[#F3EFEA]"
+                    className={inputClass}
                   />
                 </div>
 
                 <div className="space-y-1.5">
-                  <label className="text-xs font-semibold text-[#C5B9D8]">Store Location (Monrovia)</label>
+                  <label className="text-xs font-semibold text-[#524858] dark:text-[#C5B9D8]">Store Location (Monrovia)</label>
                   <input
                     type="text"
                     value={settingsForm.location}
                     onChange={e => setSettingsForm({ ...settingsForm, location: e.target.value })}
-                    className="w-full px-4 py-2 bg-[#1A1227] border border-[#34244C] rounded-xl text-xs text-[#F3EFEA]"
+                    className={inputClass}
                   />
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="space-y-1.5">
-                    <label className="text-xs font-semibold text-[#C5B9D8]">Official Email</label>
+                    <label className="text-xs font-semibold text-[#524858] dark:text-[#C5B9D8]">Official Email</label>
                     <input
                       type="email"
                       value={settingsForm.email}
                       onChange={e => setSettingsForm({ ...settingsForm, email: e.target.value })}
-                      className="w-full px-4 py-2 bg-[#1A1227] border border-[#34244C] rounded-xl text-xs text-[#F3EFEA]"
+                      className={inputClass}
                     />
                   </div>
 
                   <div className="space-y-1.5">
-                    <label className="text-xs font-semibold text-[#C5B9D8]">Official WhatsApp</label>
+                    <label className="text-xs font-semibold text-[#524858] dark:text-[#C5B9D8]">Official WhatsApp</label>
                     <input
                       type="text"
                       value={settingsForm.whatsapp}
                       onChange={e => setSettingsForm({ ...settingsForm, whatsapp: e.target.value })}
-                      className="w-full px-4 py-2 bg-[#1A1227] border border-[#34244C] rounded-xl text-xs text-[#F3EFEA]"
+                      className={inputClass}
                     />
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-3 border-t border-[#241933]">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-3 border-t border-[#E4DDD0] dark:border-[#241933]">
                   <div className="space-y-1.5">
-                    <label className="text-xs font-semibold text-[#C5B9D8]">Currency Symbol</label>
+                    <label className="text-xs font-semibold text-[#524858] dark:text-[#C5B9D8]">Currency Symbol</label>
                     <input
                       type="text"
                       value={settingsForm.currency}
                       onChange={e => setSettingsForm({ ...settingsForm, currency: e.target.value })}
-                      className="w-full px-4 py-2 bg-[#1A1227] border border-[#34244C] rounded-xl text-xs text-[#F3EFEA]"
+                      className={inputClass}
                     />
                   </div>
 
                   <div className="space-y-1.5">
-                    <label className="text-xs font-semibold text-[#C5B9D8]">Standard Monrovia Delivery Fee</label>
+                    <label className="text-xs font-semibold text-[#524858] dark:text-[#C5B9D8]">
+                      Standard Monrovia Delivery Fee
+                    </label>
                     <input
                       type="number"
                       step="0.5"
                       value={settingsForm.deliveryFee}
                       onChange={e => setSettingsForm({ ...settingsForm, deliveryFee: parseFloat(e.target.value) || 0 })}
-                      className="w-full px-4 py-2 bg-[#1A1227] border border-[#34244C] rounded-xl text-xs text-[#F3EFEA]"
+                      className={inputClass}
                     />
                   </div>
                 </div>
 
                 <button
                   type="submit"
-                  className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-[#A855F7] to-[#CA8A04] text-[#0A0710] font-semibold text-xs uppercase tracking-wider"
+                  className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-[#8B42C9] to-[#C99A35] dark:from-[#A855F7] dark:to-[#CA8A04] text-white dark:text-[#0A0710] font-semibold text-xs uppercase tracking-wider cursor-pointer"
                 >
                   Save Business Settings
                 </button>
@@ -1132,14 +1498,16 @@ create policy "Allow delete from category-images" on storage.objects
             <div className="max-w-4xl space-y-6">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                 <div>
-                  <h1 className="text-2xl font-serif font-bold text-[#F3EFEA]">Supabase Database & API</h1>
-                  <p className="text-xs text-[#9C8EB2]">Connected to project: {supabaseUrl}</p>
+                  <h1 className="text-2xl font-serif font-bold text-[#211B25] dark:text-[#F3EFEA]">
+                    Supabase Database & API
+                  </h1>
+                  <p className="text-xs text-[#746B78] dark:text-[#9C8EB2]">Connected to project: {supabaseUrl}</p>
                 </div>
                 <div className="flex items-center gap-2">
                   <button
                     onClick={handleTestSupabase}
                     disabled={testingConnection}
-                    className="px-4 py-2 rounded-xl bg-[#1A1227] hover:bg-[#251A38] text-[#F5D061] text-xs font-semibold flex items-center gap-1.5 border border-[#34244C] disabled:opacity-50"
+                    className="px-4 py-2 rounded-xl bg-white dark:bg-[#1A1227] hover:bg-[#F2EBDD] dark:hover:bg-[#251A38] text-[#9E751C] dark:text-[#F5D061] text-xs font-semibold flex items-center gap-1.5 border border-[#E4DDD0] dark:border-[#34244C] disabled:opacity-50 cursor-pointer"
                   >
                     <RefreshCw className={`w-3.5 h-3.5 ${testingConnection ? 'animate-spin' : ''}`} />
                     <span>{testingConnection ? 'Testing...' : 'Test Connection'}</span>
@@ -1150,47 +1518,71 @@ create policy "Allow delete from category-images" on storage.objects
                       setSqlCopied(true);
                       setTimeout(() => setSqlCopied(false), 2000);
                     }}
-                    className="px-4 py-2 rounded-xl bg-[#25183B] hover:bg-[#322050] text-[#F5D061] text-xs font-semibold flex items-center gap-1.5 border border-[#482E70]"
+                    className="px-4 py-2 rounded-xl bg-[#F2EBDD] dark:bg-[#25183B] hover:opacity-90 text-[#8B42C9] dark:text-[#F5D061] text-xs font-semibold flex items-center gap-1.5 border border-[#E4DDD0] dark:border-[#482E70] cursor-pointer"
                   >
-                    {sqlCopied ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
+                    {sqlCopied ? <Check className="w-4 h-4 text-emerald-600 dark:text-emerald-400" /> : <Copy className="w-4 h-4" />}
                     <span>{sqlCopied ? 'SQL Copied!' : 'Copy SQL Script'}</span>
                   </button>
                 </div>
               </div>
 
               {/* Active Connection Card */}
-              <div className="bg-[#120D1B] rounded-2xl border border-[#261B36] p-6 space-y-3">
+              <div className="bg-white dark:bg-[#120D1B] rounded-2xl border border-[#E4DDD0] dark:border-[#261B36] p-6 space-y-3 shadow-xs dark:shadow-none">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
-                    <Database className="w-4 h-4 text-[#F5D061]" />
-                    <span className="text-xs font-semibold text-[#F3EFEA]">Active Project Integration</span>
+                    <Database className="w-4 h-4 text-[#C99A35] dark:text-[#F5D061]" />
+                    <span className="text-xs font-semibold text-[#211B25] dark:text-[#F3EFEA]">
+                      Active Project Integration
+                    </span>
                   </div>
-                  <span className="text-[10px] px-2.5 py-0.5 rounded-full bg-emerald-950/60 text-emerald-300 font-semibold border border-emerald-500/40">
+                  <span className="text-[10px] px-2.5 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 font-semibold border border-emerald-500/40">
                     Client Initialized
                   </span>
                 </div>
-                <div className="text-xs text-[#C5B9D8] space-y-1 bg-[#0D0914] p-3 rounded-xl border border-[#231735] font-mono break-all">
-                  <p><span className="text-[#8C829B]">Project Endpoint:</span> {supabaseUrl}</p>
-                  <p><span className="text-[#8C829B]">Auth Role:</span> anon (public API)</p>
+                <div className="text-xs text-[#524858] dark:text-[#C5B9D8] space-y-1 bg-[#FAF8F4] dark:bg-[#0D0914] p-3 rounded-xl border border-[#E4DDD0] dark:border-[#231735] font-mono break-all">
+                  <p>
+                    <span className="text-[#746B78] dark:text-[#8C829B]">Project Endpoint:</span> {supabaseUrl}
+                  </p>
+                  <p>
+                    <span className="text-[#746B78] dark:text-[#8C829B]">Auth Role:</span> anon (public API)
+                  </p>
                 </div>
                 {connectionResult && (
-                  <div className={`p-3 rounded-xl text-xs flex items-center gap-2 ${connectionResult.success ? 'bg-emerald-950/60 border border-emerald-500/50 text-emerald-300' : 'bg-red-950/60 border border-red-500/50 text-red-300'}`}>
-                    {connectionResult.success ? <Check className="w-4 h-4 text-emerald-400 shrink-0" /> : <AlertCircle className="w-4 h-4 text-red-400 shrink-0" />}
+                  <div
+                    className={`p-3 rounded-xl text-xs flex items-center gap-2 ${
+                      connectionResult.success
+                        ? 'bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-500/50 text-emerald-700 dark:text-emerald-300'
+                        : 'bg-red-50 dark:bg-red-950/60 border border-red-500/50 text-red-700 dark:text-red-300'
+                    }`}
+                  >
+                    {connectionResult.success ? (
+                      <Check className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                    ) : (
+                      <AlertCircle className="w-4 h-4 text-red-600 dark:text-red-400 shrink-0" />
+                    )}
                     <span>{connectionResult.message}</span>
                   </div>
                 )}
               </div>
 
-              <div className="bg-[#120D1B] rounded-2xl border border-[#261B36] p-6 space-y-4">
-                <div className="flex items-center gap-2 text-xs text-[#E2D4B7]">
-                  <Database className="w-4 h-4 text-[#F5D061]" />
-                  <span className="font-semibold">Database Schema & Tables</span>
+              <div className="bg-white dark:bg-[#120D1B] rounded-2xl border border-[#E4DDD0] dark:border-[#261B36] p-6 space-y-4 shadow-xs dark:shadow-none">
+                <div className="flex items-center gap-2 text-xs text-[#9E751C] dark:text-[#E2D4B7]">
+                  <Database className="w-4 h-4 text-[#C99A35] dark:text-[#F5D061]" />
+                  <span className="font-semibold">Database Schema, Migrations &amp; Buckets</span>
                 </div>
-                <p className="text-xs text-[#C5B9D8] leading-relaxed">
-                  If you haven't run the SQL script in your Supabase SQL Editor yet, copy the script below and run it once to create the tables (<code className="text-[#F5D061]">products</code>, <code className="text-[#F5D061]">categories</code>, <code className="text-[#F5D061]">orders</code>, <code className="text-[#F5D061]">enquiries</code>, <code className="text-[#F5D061]">site_settings</code>) and enable Row Level Security.
+                <p className="text-xs text-[#524858] dark:text-[#C5B9D8] leading-relaxed">
+                  Copy the SQL script below and run it in your Supabase SQL Editor to ensure tables (
+                  <code className="text-[#8B42C9] dark:text-[#F5D061]">products</code>,{' '}
+                  <code className="text-[#8B42C9] dark:text-[#F5D061]">bulk_upload_history</code>,{' '}
+                  <code className="text-[#8B42C9] dark:text-[#F5D061]">categories</code>,{' '}
+                  <code className="text-[#8B42C9] dark:text-[#F5D061]">orders</code>,{' '}
+                  <code className="text-[#8B42C9] dark:text-[#F5D061]">site_settings</code>) and storage buckets (
+                  <code className="text-[#8B42C9] dark:text-[#F5D061]">product-images</code>,{' '}
+                  <code className="text-[#8B42C9] dark:text-[#F5D061]">category-images</code>,{' '}
+                  <code className="text-[#8B42C9] dark:text-[#F5D061]">promotional-assets</code>) are provisioned.
                 </p>
 
-                <div className="bg-[#0A0710] p-4 rounded-xl border border-[#241933] overflow-x-auto text-[11px] font-mono text-[#A855F7] max-h-96 overflow-y-auto">
+                <div className="bg-[#181224] dark:bg-[#0A0710] p-4 rounded-xl border border-[#34244C] dark:border-[#241933] overflow-x-auto text-[11px] font-mono text-[#D8B4FE] dark:text-[#A855F7] max-h-96 overflow-y-auto">
                   <pre>{SQL_MIGRATION_TEXT}</pre>
                 </div>
               </div>
@@ -1202,80 +1594,111 @@ create policy "Allow delete from category-images" on storage.objects
       {/* EDIT PRODUCT MODAL */}
       {isProductModalOpen && editingProduct && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div className="fixed inset-0 bg-black/80 backdrop-blur-sm" onClick={() => setIsProductModalOpen(false)} />
-          <div className="relative w-full max-w-xl bg-[#120D1B] rounded-3xl border border-[#3B2D54] p-6 sm:p-8 space-y-5 max-h-[90vh] overflow-y-auto z-10">
-            <div className="flex items-center justify-between border-b border-[#241933] pb-3">
-              <h3 className="text-lg font-serif font-bold text-[#F3EFEA]">
+          <div className="fixed inset-0 bg-black/75 dark:bg-black/80 backdrop-blur-sm" onClick={() => setIsProductModalOpen(false)} />
+          <div className="relative w-full max-w-xl bg-white dark:bg-[#120D1B] rounded-3xl border border-[#E4DDD0] dark:border-[#3B2D54] p-6 sm:p-8 space-y-5 max-h-[90vh] overflow-y-auto z-10 shadow-2xl">
+            <div className="flex items-center justify-between border-b border-[#E4DDD0] dark:border-[#241933] pb-3">
+              <h3 className="text-lg font-serif font-bold text-[#211B25] dark:text-[#F3EFEA]">
                 {editingProduct.id ? 'Edit Product' : 'New Product'}
               </h3>
-              <button onClick={() => setIsProductModalOpen(false)} className="text-[#8C829B] hover:text-[#F3EFEA]">
+              <button
+                onClick={() => setIsProductModalOpen(false)}
+                className="text-[#746B78] dark:text-[#8C829B] hover:text-[#211B25] dark:hover:text-[#F3EFEA] cursor-pointer"
+              >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
             <form onSubmit={handleSaveProduct} className="space-y-4 text-xs">
               <div className="space-y-1">
-                <label className="font-semibold text-[#C5B9D8]">Product Name</label>
+                <label className="font-semibold text-[#524858] dark:text-[#C5B9D8]">Product Name</label>
                 <input
                   type="text"
                   required
                   value={editingProduct.name}
                   onChange={e => {
                     const name = e.target.value;
-                    const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+                    const slug = name
+                      .toLowerCase()
+                      .replace(/[^a-z0-9]+/g, '-')
+                      .replace(/(^-|-$)/g, '');
                     setEditingProduct({ ...editingProduct, name, slug });
                   }}
-                  className="w-full px-3 py-2 bg-[#1A1227] border border-[#34244C] rounded-xl text-[#F3EFEA]"
+                  className={modalInputClass}
                 />
               </div>
 
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1">
-                  <label className="font-semibold text-[#C5B9D8]">Category</label>
+                  <label className="font-semibold text-[#524858] dark:text-[#C5B9D8]">Category</label>
                   <select
                     value={editingProduct.categoryId}
                     onChange={e => setEditingProduct({ ...editingProduct, categoryId: e.target.value })}
-                    className="w-full px-3 py-2 bg-[#1A1227] border border-[#34244C] rounded-xl text-[#F3EFEA]"
+                    className={modalInputClass}
                   >
                     {categories.map(c => (
-                      <option key={c.id} value={c.id}>{c.name}</option>
+                      <option key={c.id} value={c.id}>
+                        {c.name}
+                      </option>
                     ))}
                   </select>
                 </div>
 
                 <div className="space-y-1">
-                  <label className="font-semibold text-[#C5B9D8]">Price (USD)</label>
+                  <label className="font-semibold text-[#524858] dark:text-[#C5B9D8]">Price (USD)</label>
                   <input
                     type="number"
-                    step="0.5"
+                    step="0.01"
+                    min="0"
                     required
                     value={editingProduct.price}
                     onChange={e => setEditingProduct({ ...editingProduct, price: parseFloat(e.target.value) || 0 })}
-                    className="w-full px-3 py-2 bg-[#1A1227] border border-[#34244C] rounded-xl text-[#F3EFEA]"
+                    className={modalInputClass}
                   />
                 </div>
               </div>
 
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1">
-                  <label className="font-semibold text-[#C5B9D8]">SKU</label>
+                  <label className="font-semibold text-[#524858] dark:text-[#C5B9D8]">SKU</label>
                   <input
                     type="text"
                     value={editingProduct.sku}
                     onChange={e => setEditingProduct({ ...editingProduct, sku: e.target.value })}
-                    className="w-full px-3 py-2 bg-[#1A1227] border border-[#34244C] rounded-xl text-[#F3EFEA]"
+                    className={modalInputClass}
                   />
                 </div>
 
                 <div className="space-y-1">
-                  <label className="font-semibold text-[#C5B9D8]">Stock Quantity</label>
+                  <label className="font-semibold text-[#524858] dark:text-[#C5B9D8]">Stock Quantity</label>
                   <input
                     type="number"
                     min="0"
                     required
                     value={editingProduct.stockQuantity}
                     onChange={e => setEditingProduct({ ...editingProduct, stockQuantity: parseInt(e.target.value) || 0 })}
-                    className="w-full px-3 py-2 bg-[#1A1227] border border-[#34244C] rounded-xl text-[#F3EFEA]"
+                    className={modalInputClass}
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <label className="font-semibold text-[#524858] dark:text-[#C5B9D8]">Brand (Optional)</label>
+                  <input
+                    type="text"
+                    value={editingProduct.brand || ''}
+                    onChange={e => setEditingProduct({ ...editingProduct, brand: e.target.value })}
+                    className={modalInputClass}
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="font-semibold text-[#524858] dark:text-[#C5B9D8]">Size / Volume (Optional)</label>
+                  <input
+                    type="text"
+                    value={editingProduct.sizeOrVolume || ''}
+                    onChange={e => setEditingProduct({ ...editingProduct, sizeOrVolume: e.target.value })}
+                    className={modalInputClass}
                   />
                 </div>
               </div>
@@ -1296,72 +1719,72 @@ create policy "Allow delete from category-images" on storage.objects
               />
 
               <div className="space-y-1">
-                <label className="font-semibold text-[#C5B9D8]">Description</label>
+                <label className="font-semibold text-[#524858] dark:text-[#C5B9D8]">Description</label>
                 <textarea
                   rows={3}
                   required
                   value={editingProduct.description}
                   onChange={e => setEditingProduct({ ...editingProduct, description: e.target.value })}
-                  className="w-full px-3 py-2 bg-[#1A1227] border border-[#34244C] rounded-xl text-[#F3EFEA]"
+                  className={modalInputClass}
                 />
               </div>
 
               <div className="flex flex-wrap gap-4 pt-2">
-                <label className="flex items-center gap-2 text-[#C5B9D8] cursor-pointer">
+                <label className="flex items-center gap-2 text-[#524858] dark:text-[#C5B9D8] cursor-pointer">
                   <input
                     type="checkbox"
                     checked={editingProduct.isAvailable}
                     onChange={e => setEditingProduct({ ...editingProduct, isAvailable: e.target.checked })}
-                    className="rounded bg-[#1A1227] border-[#34244C] text-[#A855F7]"
+                    className="rounded bg-[#FAF8F4] dark:bg-[#1A1227] border-[#E4DDD0] dark:border-[#34244C] text-[#8B42C9] dark:text-[#A855F7]"
                   />
                   <span>Is Available</span>
                 </label>
 
-                <label className="flex items-center gap-2 text-[#C5B9D8] cursor-pointer">
+                <label className="flex items-center gap-2 text-[#524858] dark:text-[#C5B9D8] cursor-pointer">
                   <input
                     type="checkbox"
                     checked={editingProduct.isFeatured}
                     onChange={e => setEditingProduct({ ...editingProduct, isFeatured: e.target.checked })}
-                    className="rounded bg-[#1A1227] border-[#34244C] text-[#A855F7]"
+                    className="rounded bg-[#FAF8F4] dark:bg-[#1A1227] border-[#E4DDD0] dark:border-[#34244C] text-[#8B42C9] dark:text-[#A855F7]"
                   />
                   <span>Featured</span>
                 </label>
 
-                <label className="flex items-center gap-2 text-[#C5B9D8] cursor-pointer">
+                <label className="flex items-center gap-2 text-[#524858] dark:text-[#C5B9D8] cursor-pointer">
                   <input
                     type="checkbox"
                     checked={editingProduct.isNewArrival}
                     onChange={e => setEditingProduct({ ...editingProduct, isNewArrival: e.target.checked })}
-                    className="rounded bg-[#1A1227] border-[#34244C] text-[#A855F7]"
+                    className="rounded bg-[#FAF8F4] dark:bg-[#1A1227] border-[#E4DDD0] dark:border-[#34244C] text-[#8B42C9] dark:text-[#A855F7]"
                   />
                   <span>New Arrival</span>
                 </label>
 
-                <label className="flex items-center gap-2 text-[#C5B9D8] cursor-pointer">
+                <label className="flex items-center gap-2 text-[#524858] dark:text-[#C5B9D8] cursor-pointer">
                   <input
                     type="checkbox"
                     checked={editingProduct.isBestSeller}
                     onChange={e => setEditingProduct({ ...editingProduct, isBestSeller: e.target.checked })}
-                    className="rounded bg-[#1A1227] border-[#34244C] text-[#A855F7]"
+                    className="rounded bg-[#FAF8F4] dark:bg-[#1A1227] border-[#E4DDD0] dark:border-[#34244C] text-[#8B42C9] dark:text-[#A855F7]"
                   />
                   <span>Customer Favourite</span>
                 </label>
               </div>
 
-              <div className="pt-4 border-t border-[#241933] flex justify-end gap-3">
+              <div className="pt-4 border-t border-[#E4DDD0] dark:border-[#241933] flex justify-end gap-3">
                 <button
                   type="button"
                   onClick={() => setIsProductModalOpen(false)}
-                  className="px-4 py-2 rounded-xl bg-[#1A1227] text-[#C5B9D8] hover:bg-[#251A38] transition-colors cursor-pointer"
+                  className="px-4 py-2 rounded-xl bg-[#FAF8F4] dark:bg-[#1A1227] border border-[#E4DDD0] dark:border-transparent text-[#524858] dark:text-[#C5B9D8] hover:bg-[#F2EBDD] dark:hover:bg-[#251A38] transition-colors cursor-pointer"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={isUploadingProductImage || !editingProduct.images[0]}
-                  className="px-5 py-2 rounded-xl bg-gradient-to-r from-[#A855F7] to-[#CA8A04] text-[#0A0710] font-semibold disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 shadow-md transition-all cursor-pointer"
+                  className="px-5 py-2 rounded-xl bg-gradient-to-r from-[#8B42C9] to-[#C99A35] dark:from-[#A855F7] dark:to-[#CA8A04] text-white dark:text-[#0A0710] font-semibold disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 shadow-md transition-all cursor-pointer"
                 >
-                  {isUploadingProductImage && <RefreshCw className="w-4 h-4 animate-spin text-[#0A0710]" />}
+                  {isUploadingProductImage && <RefreshCw className="w-4 h-4 animate-spin" />}
                   <span>{isUploadingProductImage ? 'Uploading Image...' : 'Save Product'}</span>
                 </button>
               </div>
@@ -1373,30 +1796,36 @@ create policy "Allow delete from category-images" on storage.objects
       {/* EDIT CATEGORY MODAL */}
       {isCategoryModalOpen && editingCategory && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div className="fixed inset-0 bg-black/80 backdrop-blur-sm" onClick={() => setIsCategoryModalOpen(false)} />
-          <div className="relative w-full max-w-lg bg-[#120D1B] rounded-3xl border border-[#3B2D54] p-6 space-y-4 z-10">
-            <div className="flex items-center justify-between border-b border-[#241933] pb-3">
-              <h3 className="text-lg font-serif font-bold text-[#F3EFEA]">
+          <div className="fixed inset-0 bg-black/75 dark:bg-black/80 backdrop-blur-sm" onClick={() => setIsCategoryModalOpen(false)} />
+          <div className="relative w-full max-w-lg bg-white dark:bg-[#120D1B] rounded-3xl border border-[#E4DDD0] dark:border-[#3B2D54] p-6 space-y-4 z-10 shadow-2xl">
+            <div className="flex items-center justify-between border-b border-[#E4DDD0] dark:border-[#241933] pb-3">
+              <h3 className="text-lg font-serif font-bold text-[#211B25] dark:text-[#F3EFEA]">
                 {editingCategory.name ? 'Edit Category' : 'New Category'}
               </h3>
-              <button onClick={() => setIsCategoryModalOpen(false)} className="text-[#8C829B] hover:text-[#F3EFEA]">
+              <button
+                onClick={() => setIsCategoryModalOpen(false)}
+                className="text-[#746B78] dark:text-[#8C829B] hover:text-[#211B25] dark:hover:text-[#F3EFEA] cursor-pointer"
+              >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
             <form onSubmit={handleSaveCategory} className="space-y-4 text-xs">
               <div className="space-y-1">
-                <label className="font-semibold text-[#C5B9D8]">Category Name</label>
+                <label className="font-semibold text-[#524858] dark:text-[#C5B9D8]">Category Name</label>
                 <input
                   type="text"
                   required
                   value={editingCategory.name}
                   onChange={e => {
                     const name = e.target.value;
-                    const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+                    const slug = name
+                      .toLowerCase()
+                      .replace(/[^a-z0-9]+/g, '-')
+                      .replace(/(^-|-$)/g, '');
                     setEditingCategory({ ...editingCategory, name, slug });
                   }}
-                  className="w-full px-3 py-2 bg-[#1A1227] border border-[#34244C] rounded-xl text-[#F3EFEA] focus:outline-none focus:border-[#A855F7]"
+                  className={modalInputClass}
                 />
               </div>
 
@@ -1409,32 +1838,32 @@ create policy "Allow delete from category-images" on storage.objects
               />
 
               <div className="space-y-1">
-                <label className="font-semibold text-[#C5B9D8]">Description</label>
+                <label className="font-semibold text-[#524858] dark:text-[#C5B9D8]">Description</label>
                 <textarea
                   rows={2}
                   value={editingCategory.description}
                   onChange={e => setEditingCategory({ ...editingCategory, description: e.target.value })}
-                  className="w-full px-3 py-2 bg-[#1A1227] border border-[#34244C] rounded-xl text-[#F3EFEA] focus:outline-none focus:border-[#A855F7]"
+                  className={modalInputClass}
                 />
               </div>
 
-              <div className="pt-4 border-t border-[#241933] flex justify-end gap-3">
+              <div className="pt-4 border-t border-[#E4DDD0] dark:border-[#241933] flex justify-end gap-3">
                 <button
                   type="button"
                   onClick={() => {
                     setIsCategoryModalOpen(false);
                     setEditingCategory(null);
                   }}
-                  className="px-4 py-2 rounded-xl bg-[#1A1227] text-[#C5B9D8] hover:bg-[#251A38] transition-colors cursor-pointer"
+                  className="px-4 py-2 rounded-xl bg-[#FAF8F4] dark:bg-[#1A1227] border border-[#E4DDD0] dark:border-transparent text-[#524858] dark:text-[#C5B9D8] hover:bg-[#F2EBDD] dark:hover:bg-[#251A38] transition-colors cursor-pointer"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={isUploadingCategoryImage || !editingCategory.imageUrl}
-                  className="px-5 py-2 rounded-xl bg-gradient-to-r from-[#A855F7] to-[#CA8A04] text-[#0A0710] font-semibold disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 shadow-md transition-all cursor-pointer"
+                  className="px-5 py-2 rounded-xl bg-gradient-to-r from-[#8B42C9] to-[#C99A35] dark:from-[#A855F7] dark:to-[#CA8A04] text-white dark:text-[#0A0710] font-semibold disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 shadow-md transition-all cursor-pointer"
                 >
-                  {isUploadingCategoryImage && <RefreshCw className="w-4 h-4 animate-spin text-[#0A0710]" />}
+                  {isUploadingCategoryImage && <RefreshCw className="w-4 h-4 animate-spin" />}
                   <span>{isUploadingCategoryImage ? 'Uploading Image...' : 'Save Category'}</span>
                 </button>
               </div>
@@ -1446,66 +1875,88 @@ create policy "Allow delete from category-images" on storage.objects
       {/* ORDER DETAILS MODAL */}
       {selectedOrder && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div className="fixed inset-0 bg-black/80 backdrop-blur-sm" onClick={() => setSelectedOrder(null)} />
-          <div className="relative w-full max-w-2xl bg-[#120D1B] rounded-3xl border border-[#3B2D54] p-6 sm:p-8 space-y-6 max-h-[90vh] overflow-y-auto z-10">
-            <div className="flex items-center justify-between border-b border-[#241933] pb-3">
+          <div className="fixed inset-0 bg-black/75 dark:bg-black/80 backdrop-blur-sm" onClick={() => setSelectedOrder(null)} />
+          <div className="relative w-full max-w-2xl bg-white dark:bg-[#120D1B] rounded-3xl border border-[#E4DDD0] dark:border-[#3B2D54] p-6 sm:p-8 space-y-6 max-h-[90vh] overflow-y-auto z-10 shadow-2xl">
+            <div className="flex items-center justify-between border-b border-[#E4DDD0] dark:border-[#241933] pb-3">
               <div>
-                <span className="text-[10px] text-[#A855F7] uppercase tracking-wider font-semibold">Order Details</span>
-                <h3 className="text-xl font-mono font-bold text-[#F5D061]">{selectedOrder.orderReference}</h3>
+                <span className="text-[10px] text-[#8B42C9] dark:text-[#A855F7] uppercase tracking-wider font-semibold">
+                  Order Details
+                </span>
+                <h3 className="text-xl font-mono font-bold text-[#9E751C] dark:text-[#F5D061]">
+                  {selectedOrder.orderReference}
+                </h3>
               </div>
-              <button onClick={() => setSelectedOrder(null)} className="text-[#8C829B] hover:text-[#F3EFEA]">
+              <button
+                onClick={() => setSelectedOrder(null)}
+                className="text-[#746B78] dark:text-[#8C829B] hover:text-[#211B25] dark:hover:text-[#F3EFEA] cursor-pointer"
+              >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
-              <div className="p-4 rounded-xl bg-[#171022] border border-[#2D1E42] space-y-1">
-                <p className="font-semibold text-[#F5D061]">Customer Information</p>
-                <p className="text-[#F3EFEA] font-medium">{selectedOrder.customerName}</p>
-                <p className="text-[#C5B9D8]">{selectedOrder.customerPhone}</p>
-                {selectedOrder.customerEmail && <p className="text-[#8C829B]">{selectedOrder.customerEmail}</p>}
+              <div className="p-4 rounded-xl bg-[#FAF8F4] dark:bg-[#171022] border border-[#E4DDD0] dark:border-[#2D1E42] space-y-1">
+                <p className="font-semibold text-[#9E751C] dark:text-[#F5D061]">Customer Information</p>
+                <p className="text-[#211B25] dark:text-[#F3EFEA] font-medium">{selectedOrder.customerName}</p>
+                <p className="text-[#524858] dark:text-[#C5B9D8]">{selectedOrder.customerPhone}</p>
+                {selectedOrder.customerEmail && (
+                  <p className="text-[#746B78] dark:text-[#8C829B]">{selectedOrder.customerEmail}</p>
+                )}
               </div>
 
-              <div className="p-4 rounded-xl bg-[#171022] border border-[#2D1E42] space-y-1">
-                <p className="font-semibold text-[#A855F7]">Fulfillment & Location</p>
-                <p className="text-[#F3EFEA]">{selectedOrder.deliveryLocation}</p>
-                <p className="text-[#C5B9D8]">{selectedOrder.deliveryAddress}</p>
-                <p className="text-[11px] text-[#F5D061] font-semibold">{selectedOrder.deliveryMethod}</p>
+              <div className="p-4 rounded-xl bg-[#FAF8F4] dark:bg-[#171022] border border-[#E4DDD0] dark:border-[#2D1E42] space-y-1">
+                <p className="font-semibold text-[#8B42C9] dark:text-[#A855F7]">Fulfillment & Location</p>
+                <p className="text-[#211B25] dark:text-[#F3EFEA]">{selectedOrder.deliveryLocation}</p>
+                <p className="text-[#524858] dark:text-[#C5B9D8]">{selectedOrder.deliveryAddress}</p>
+                <p className="text-[11px] text-[#9E751C] dark:text-[#F5D061] font-semibold">
+                  {selectedOrder.deliveryMethod}
+                </p>
               </div>
             </div>
 
             {/* Items */}
             <div className="space-y-2">
-              <h4 className="text-xs uppercase tracking-wider text-[#8C829B] font-semibold">Ordered Items</h4>
-              <div className="divide-y divide-[#221633] border border-[#241933] rounded-xl p-3 bg-[#171022]">
+              <h4 className="text-xs uppercase tracking-wider text-[#746B78] dark:text-[#8C829B] font-semibold">
+                Ordered Items
+              </h4>
+              <div className="divide-y divide-[#E4DDD0] dark:divide-[#221633] border border-[#E4DDD0] dark:border-[#241933] rounded-xl p-3 bg-[#FAF8F4] dark:bg-[#171022]">
                 {selectedOrder.items.map((item, i) => (
                   <div key={i} className="py-2.5 flex items-center justify-between text-xs">
                     <div>
-                      <p className="font-medium text-[#F3EFEA]">{item.productName}</p>
-                      {item.selectedVariant && <p className="text-[10px] text-[#A855F7]">{item.selectedVariant}</p>}
-                      <p className="text-[10px] text-[#8C829B]">Qty: {item.quantity} × {selectedOrder.currency}{item.unitPrice.toFixed(2)}</p>
+                      <p className="font-medium text-[#211B25] dark:text-[#F3EFEA]">{item.productName}</p>
+                      {item.selectedVariant && (
+                        <p className="text-[10px] text-[#8B42C9] dark:text-[#A855F7]">{item.selectedVariant}</p>
+                      )}
+                      <p className="text-[10px] text-[#746B78] dark:text-[#8C829B]">
+                        Qty: {item.quantity} × {selectedOrder.currency}
+                        {item.unitPrice.toFixed(2)}
+                      </p>
                     </div>
-                    <span className="font-semibold text-[#F5D061] tabular-nums">{selectedOrder.currency}{item.subtotal.toFixed(2)}</span>
+                    <span className="font-semibold text-[#9E751C] dark:text-[#F5D061] tabular-nums">
+                      {selectedOrder.currency}
+                      {item.subtotal.toFixed(2)}
+                    </span>
                   </div>
                 ))}
               </div>
             </div>
 
             {/* Total and Status change */}
-            <div className="pt-3 border-t border-[#241933] flex flex-col sm:flex-row sm:items-center justify-between gap-4 text-xs">
+            <div className="pt-3 border-t border-[#E4DDD0] dark:border-[#241933] flex flex-col sm:flex-row sm:items-center justify-between gap-4 text-xs">
               <div>
-                <span className="text-[#8C829B]">Total Amount: </span>
-                <span className="text-lg font-serif font-bold text-[#F5D061] tabular-nums">
-                  {selectedOrder.currency}{selectedOrder.totalAmount.toFixed(2)}
+                <span className="text-[#746B78] dark:text-[#8C829B]">Total Amount: </span>
+                <span className="text-lg font-serif font-bold text-[#9E751C] dark:text-[#F5D061] tabular-nums">
+                  {selectedOrder.currency}
+                  {selectedOrder.totalAmount.toFixed(2)}
                 </span>
               </div>
 
               <div className="flex items-center gap-2">
-                <span className="text-[#8C829B]">Change Status:</span>
+                <span className="text-[#746B78] dark:text-[#8C829B]">Change Status:</span>
                 <select
                   value={selectedOrder.orderStatus}
                   onChange={e => handleUpdateOrderStatus(selectedOrder.id, e.target.value as OrderStatus)}
-                  className="bg-[#1A1227] border border-[#3A2854] text-xs text-[#F5D061] px-3 py-1.5 rounded-lg focus:outline-none"
+                  className="bg-[#FAF8F4] dark:bg-[#1A1227] border border-[#E4DDD0] dark:border-[#3A2854] text-xs text-[#9E751C] dark:text-[#F5D061] px-3 py-1.5 rounded-lg focus:outline-none cursor-pointer"
                 >
                   <option value="Pending">Pending</option>
                   <option value="Confirmed">Confirmed</option>
@@ -1519,6 +1970,19 @@ create policy "Allow delete from category-images" on storage.objects
             </div>
           </div>
         </div>
+      )}
+
+      {/* LIVE PROMOTIONAL CAMPAIGN PREVIEW MODAL */}
+      {isPromoPreviewOpen && (
+        <PromotionalFlyerModal
+          forceOpen
+          previewConfig={settingsForm.promoCampaign}
+          onClosePreview={() => setIsPromoPreviewOpen(false)}
+          onNavigate={() => {
+            setIsPromoPreviewOpen(false);
+            onBackToStore();
+          }}
+        />
       )}
     </div>
   );

@@ -245,12 +245,12 @@ export const CategoryImageUploader: React.FC<CategoryImageUploaderProps> = ({
     <div className="space-y-2">
       {/* Label and Helpful Instruction */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
-        <label className="text-xs font-semibold text-[#C5B9D8] flex items-center gap-1.5">
-          <ImageIcon className="w-3.5 h-3.5 text-[#A855F7]" />
+        <label className="text-xs font-semibold text-[#211B25] dark:text-[#C5B9D8] flex items-center gap-1.5">
+          <ImageIcon className="w-3.5 h-3.5 text-[#8B42C9] dark:text-[#A855F7]" />
           <span>{label}</span>
-          <span className="text-red-400 text-xs">*</span>
+          <span className="text-red-500 dark:text-red-400 text-xs">*</span>
         </label>
-        <span className="text-[11px] text-[#9C8EB2]">
+        <span className="text-[11px] text-[#746B78] dark:text-[#9C8EB2]">
           Upload a category image from your computer (JPG, PNG, or WEBP, max 5 MB)
         </span>
       </div>
@@ -267,10 +267,8 @@ export const CategoryImageUploader: React.FC<CategoryImageUploaderProps> = ({
 
       {/* Preview or Empty Drop Area */}
       {hasImage ? (
-        /* Image Preview State */
-        <div className="relative rounded-2xl border border-[#3B2D54] bg-[#120D1B] p-4 flex flex-col sm:flex-row items-center gap-4 transition-all">
-          {/* Proportional, non-distorted preview */}
-          <div className="relative group shrink-0 w-32 h-36 sm:w-36 sm:h-44 rounded-xl overflow-hidden bg-[#1A1227] border border-[#2E1E4B] shadow-inner">
+        <div className="relative rounded-2xl border border-[#E4DDD0] dark:border-[#3B2D54] bg-[#FAF8F4] dark:bg-[#120D1B] p-4 flex flex-col sm:flex-row items-center gap-4 transition-all">
+          <div className="relative group shrink-0 w-32 h-36 sm:w-36 sm:h-44 rounded-xl overflow-hidden bg-white dark:bg-[#1A1227] border border-[#E4DDD0] dark:border-[#2E1E4B] shadow-inner">
             <img
               src={imageUrl}
               alt="Category Preview"
@@ -286,66 +284,61 @@ export const CategoryImageUploader: React.FC<CategoryImageUploaderProps> = ({
             )}
           </div>
 
-          {/* Details & Action Controls */}
           <div className="flex-1 w-full space-y-2 text-left">
             <div className="flex flex-wrap items-center gap-2">
-              <span className="text-xs font-semibold text-[#F3EFEA]">Active Category Image</span>
+              <span className="text-xs font-semibold text-[#211B25] dark:text-[#F3EFEA]">Active Category Image</span>
               {isSupabaseHosted ? (
-                <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-emerald-950/60 text-emerald-300 border border-emerald-800/40 flex items-center gap-1">
-                  <Sparkles className="w-2.5 h-2.5 text-emerald-400" />
+                <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/40 flex items-center gap-1">
+                  <Sparkles className="w-2.5 h-2.5 text-emerald-600 dark:text-emerald-400" />
                   Supabase Storage
                 </span>
               ) : (
-                <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-[#251A38] text-[#C5B9D8] border border-[#3B2D54]">
+                <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-[#F2EBDD] dark:bg-[#251A38] text-[#211B25] dark:text-[#C5B9D8] border border-[#E4DDD0] dark:border-[#3B2D54]">
                   Ready to Save
                 </span>
               )}
             </div>
 
-            <p className="text-[11px] text-[#8C829B] font-mono truncate max-w-xs sm:max-w-md" title={imageUrl}>
+            <p className="text-[11px] text-[#746B78] dark:text-[#8C829B] font-mono truncate max-w-xs sm:max-w-md" title={imageUrl}>
               {imageUrl.startsWith('data:') ? 'Embedded Image Data' : imageUrl}
             </p>
 
             <div className="flex flex-wrap items-center gap-2 pt-1">
-              {/* Replace Image Button */}
               <button
                 type="button"
                 onClick={handleOpenFileDialog}
                 disabled={isUploading}
-                className="px-3 py-1.5 rounded-xl bg-[#251A38] hover:bg-[#34244C] text-[#F3EFEA] text-xs font-medium border border-[#482E70] flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50"
+                className="px-3 py-1.5 rounded-xl bg-[#F2EBDD] dark:bg-[#251A38] hover:bg-[#EAE0CC] dark:hover:bg-[#34244C] text-[#211B25] dark:text-[#F3EFEA] text-xs font-medium border border-[#E4DDD0] dark:border-[#482E70] flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50"
               >
-                <RefreshCw className={`w-3.5 h-3.5 text-[#F5D061] ${isUploading ? 'animate-spin' : ''}`} />
+                <RefreshCw className={`w-3.5 h-3.5 text-[#C99A35] dark:text-[#F5D061] ${isUploading ? 'animate-spin' : ''}`} />
                 <span>Replace Image</span>
               </button>
 
-              {/* View Full Image */}
               {!imageUrl.startsWith('data:') && (
                 <a
                   href={imageUrl}
                   target="_blank"
                   rel="noreferrer noopener"
-                  className="px-3 py-1.5 rounded-xl bg-[#1A1227] hover:bg-[#251A38] text-[#C5B9D8] text-xs font-medium border border-[#2E1E4B] flex items-center gap-1.5 transition-colors"
+                  className="px-3 py-1.5 rounded-xl bg-white dark:bg-[#1A1227] hover:bg-[#FAF8F4] dark:hover:bg-[#251A38] text-[#746B78] dark:text-[#C5B9D8] text-xs font-medium border border-[#E4DDD0] dark:border-[#2E1E4B] flex items-center gap-1.5 transition-colors"
                 >
                   <ExternalLink className="w-3.5 h-3.5" />
                   <span>View Full</span>
                 </a>
               )}
 
-              {/* Remove Image Button */}
               <button
                 type="button"
                 onClick={handleRemoveImage}
                 disabled={isUploading}
-                className="px-3 py-1.5 rounded-xl bg-red-950/30 hover:bg-red-950/60 text-red-300 text-xs font-medium border border-red-800/40 flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50"
+                className="px-3 py-1.5 rounded-xl bg-red-50 dark:bg-red-950/30 hover:bg-red-100 dark:hover:bg-red-950/60 text-red-700 dark:text-red-300 text-xs font-medium border border-red-200 dark:border-red-800/40 flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50"
               >
-                <Trash2 className="w-3.5 h-3.5 text-red-400" />
+                <Trash2 className="w-3.5 h-3.5 text-red-600 dark:text-red-400" />
                 <span>Remove</span>
               </button>
             </div>
           </div>
         </div>
       ) : (
-        /* Empty Upload Dropzone State */
         <div
           onDragOver={handleDragOver}
           onDragLeave={handleDragLeave}
@@ -353,80 +346,77 @@ export const CategoryImageUploader: React.FC<CategoryImageUploaderProps> = ({
           onClick={handleOpenFileDialog}
           className={`relative rounded-2xl border-2 border-dashed p-6 sm:p-7 flex flex-col items-center justify-center text-center cursor-pointer transition-all ${
             isDragging
-              ? 'border-[#A855F7] bg-[#221338]/60 shadow-lg shadow-[#A855F7]/10 scale-[1.01]'
-              : 'border-[#3B2D54] hover:border-[#A855F7]/70 bg-[#120D1B] hover:bg-[#181124]'
+              ? 'border-[#8B42C9] dark:border-[#A855F7] bg-[#F2EBDD]/80 dark:bg-[#221338]/60 shadow-lg scale-[1.01]'
+              : 'border-[#E4DDD0] dark:border-[#3B2D54] hover:border-[#8B42C9] dark:hover:border-[#A855F7]/70 bg-[#FAF8F4] dark:bg-[#120D1B] hover:bg-[#F2EBDD]/50 dark:hover:bg-[#181124]'
           }`}
         >
-          <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-[#251A38] to-[#3B2456] border border-[#52327A] flex items-center justify-center text-[#F5D061] shadow-inner mb-2.5">
+          <div className="w-12 h-12 rounded-2xl bg-[#F2EBDD] dark:bg-gradient-to-tr dark:from-[#251A38] dark:to-[#3B2456] border border-[#E4DDD0] dark:border-[#52327A] flex items-center justify-center text-[#C99A35] dark:text-[#F5D061] shadow-inner mb-2.5">
             {isUploading ? (
-              <Loader2 className="w-6 h-6 text-[#F5D061] animate-spin" />
+              <Loader2 className="w-6 h-6 animate-spin" />
             ) : (
-              <UploadCloud className="w-6 h-6 text-[#F5D061]" />
+              <UploadCloud className="w-6 h-6" />
             )}
           </div>
 
           <div className="space-y-1 max-w-sm">
-            <h4 className="text-xs font-semibold text-[#F3EFEA]">
+            <h4 className="text-xs font-semibold text-[#211B25] dark:text-[#F3EFEA]">
               {isUploading ? 'Uploading category image...' : 'Select or drop a category image'}
             </h4>
-            <p className="text-[11px] text-[#9C8EB2]">
+            <p className="text-[11px] text-[#746B78] dark:text-[#9C8EB2]">
               Drag and drop an image here, or{' '}
-              <span className="text-[#F5D061] font-semibold underline underline-offset-2">browse files</span>
+              <span className="text-[#8B42C9] dark:text-[#F5D061] font-semibold underline underline-offset-2">browse files</span>
             </p>
-            <p className="text-[10px] text-[#7C6E91]">Supports JPG, JPEG, PNG, or WEBP (up to 5 MB)</p>
+            <p className="text-[10px] text-[#746B78] dark:text-[#7C6E91]">Supports JPG, JPEG, PNG, or WEBP (up to 5 MB)</p>
           </div>
 
           <div className="mt-3">
-            <span className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-[#A855F7] to-[#CA8A04] text-[#0A0710] font-semibold text-xs shadow-md shadow-[#A855F7]/15">
-              <UploadCloud className="w-3.5 h-3.5 text-[#0A0710]" />
+            <span className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-[#8B42C9] to-[#C99A35] dark:from-[#A855F7] dark:to-[#CA8A04] text-white dark:text-[#0A0710] font-semibold text-xs shadow-md">
+              <UploadCloud className="w-3.5 h-3.5" />
               <span>Choose Image from Computer</span>
             </span>
           </div>
         </div>
       )}
 
-      {/* Upload Progress Bar */}
       {isUploading && (
-        <div className="p-3 rounded-xl bg-[#1A1227] border border-[#3B2D54] space-y-2">
+        <div className="p-3 rounded-xl bg-[#FAF8F4] dark:bg-[#1A1227] border border-[#E4DDD0] dark:border-[#3B2D54] space-y-2">
           <div className="flex items-center justify-between text-xs">
-            <span className="text-[#C5B9D8] flex items-center gap-1.5 font-medium">
-              <Loader2 className="w-3.5 h-3.5 text-[#F5D061] animate-spin" />
+            <span className="text-[#211B25] dark:text-[#C5B9D8] flex items-center gap-1.5 font-medium">
+              <Loader2 className="w-3.5 h-3.5 text-[#C99A35] dark:text-[#F5D061] animate-spin" />
               <span>Uploading category image...</span>
             </span>
-            <span className="text-[#F5D061] font-mono font-semibold">{uploadProgress}%</span>
+            <span className="text-[#C99A35] dark:text-[#F5D061] font-mono font-semibold">{uploadProgress}%</span>
           </div>
-          <div className="w-full h-1.5 rounded-full bg-[#0D0914] overflow-hidden">
+          <div className="w-full h-1.5 rounded-full bg-[#E4DDD0] dark:bg-[#0D0914] overflow-hidden">
             <div
-              className="h-full bg-gradient-to-r from-[#A855F7] via-[#C084FC] to-[#F5D061] transition-all duration-200 rounded-full"
+              className="h-full bg-gradient-to-r from-[#8B42C9] to-[#C99A35] dark:from-[#A855F7] dark:via-[#C084FC] dark:to-[#F5D061] transition-all duration-200 rounded-full"
               style={{ width: `${uploadProgress}%` }}
             />
           </div>
         </div>
       )}
 
-      {/* Success Message */}
       {successMessage && !isUploading && (
-        <div className="p-2.5 rounded-xl bg-emerald-950/40 border border-emerald-800/40 text-emerald-300 text-xs flex items-center gap-2">
-          <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+        <div className="p-2.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800/40 text-emerald-700 dark:text-emerald-300 text-xs flex items-center gap-2">
+          <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
           <span>{successMessage}</span>
         </div>
       )}
 
-      {/* Error Message */}
       {error && !isUploading && (
-        <div className="p-3 rounded-xl bg-red-950/40 border border-red-800/50 text-red-200 text-xs space-y-1.5">
+        <div className="p-3 rounded-xl bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800/50 text-red-700 dark:text-red-200 text-xs space-y-1.5">
           <div className="flex items-start gap-2">
-            <AlertTriangle className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />
+            <AlertTriangle className="w-4 h-4 text-red-600 dark:text-red-400 shrink-0 mt-0.5" />
             <div className="space-y-0.5">
-              <p className="font-semibold text-red-300">Upload Issue</p>
-              <p className="text-[11px] text-red-200/90 leading-relaxed">{error}</p>
+              <p className="font-semibold">Upload Issue</p>
+              <p className="text-[11px] leading-relaxed">{error}</p>
             </div>
           </div>
           <div className="flex items-center gap-2 pt-1 pl-6">
             <button
               type="button"
               onClick={handleOpenFileDialog}
-              className="px-2.5 py-1 rounded-lg bg-red-900/60 hover:bg-red-900 text-white text-[11px] font-medium flex items-center gap-1 cursor-pointer transition-colors"
+              className="px-2.5 py-1 rounded-lg bg-red-600 hover:bg-red-700 text-white text-[11px] font-medium flex items-center gap-1 cursor-pointer transition-colors"
             >
               <RefreshCw className="w-3 h-3" />
               <span>Try Again</span>

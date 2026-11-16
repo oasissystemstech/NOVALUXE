@@ -19,11 +19,11 @@ export const WhatsAppFloatingButton: React.FC = () => {
     >
       {/* Modern Greeting Tooltip */}
       {showTooltip && (
-        <div className="hidden sm:flex items-center gap-2.5 bg-[#120D1B]/95 text-[#F3EFEA] border border-[#3B2D54] px-4 py-2.5 rounded-2xl shadow-2xl backdrop-blur-md text-xs font-medium animate-in fade-in slide-in-from-right-3 duration-200">
+        <div className="hidden sm:flex items-center gap-2.5 bg-white/95 dark:bg-[#120D1B]/95 text-[#211B25] dark:text-[#F3EFEA] border border-[#E2D9C8] dark:border-[#3B2D54] px-4 py-2.5 rounded-2xl shadow-2xl backdrop-blur-md text-xs font-medium animate-in fade-in slide-in-from-right-3 duration-200">
           <div className="flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-[#25D366] shrink-0 animate-pulse" />
-            <span className="text-[#C5B9D8]">
-              Chat with <strong className="text-[#F3EFEA] font-semibold">NOVALUXE</strong> on WhatsApp
+            <span className="w-2 h-2 rounded-full bg-[#25D366] shrink-0" />
+            <span className="text-[#574E5D] dark:text-[#C5B9D8]">
+              Chat with <strong className="text-[#211B25] dark:text-[#F3EFEA] font-semibold">NOVALUXE</strong> on WhatsApp
             </span>
           </div>
           <button
@@ -32,7 +32,7 @@ export const WhatsAppFloatingButton: React.FC = () => {
               e.stopPropagation();
               setShowTooltip(false);
             }}
-            className="text-[#8C829B] hover:text-[#F3EFEA] p-0.5 ml-1 rounded transition-colors"
+            className="text-[#746B78] hover:text-[#211B25] dark:text-[#8C829B] dark:hover:text-[#F3EFEA] p-0.5 ml-1 rounded transition-colors cursor-pointer"
             aria-label="Dismiss tooltip"
           >
             <X className="w-3.5 h-3.5" />
@@ -46,7 +46,7 @@ export const WhatsAppFloatingButton: React.FC = () => {
         target="_blank"
         rel="noopener noreferrer"
         onMouseEnter={() => setShowTooltip(true)}
-        className="group relative flex items-center justify-center w-14 h-14 sm:w-15 sm:h-15 rounded-full transition-transform duration-200 hover:scale-108 active:scale-95 cursor-pointer focus:outline-none focus:ring-2 focus:ring-[#25D366] focus:ring-offset-2 focus:ring-offset-[#0C0813]"
+        className="group relative flex items-center justify-center w-14 h-14 sm:w-15 sm:h-15 rounded-full transition-transform duration-200 hover:scale-108 active:scale-95 cursor-pointer focus:outline-none focus:ring-2 focus:ring-[#25D366] focus:ring-offset-2 focus:ring-offset-[#FAF8F4] dark:focus:ring-offset-[#0C0813]"
         aria-label="Chat with NOVALUXE on WhatsApp (+1 605 941-3997)"
         title="Chat with NOVALUXE on WhatsApp"
         style={{

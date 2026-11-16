@@ -12,6 +12,7 @@ import {
   Loader2
 } from 'lucide-react';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
+import { handleImageError } from '../lib/imageUtils';
 
 interface ProductImageUploaderProps {
   imageUrl?: string;
@@ -140,10 +141,11 @@ export const ProductImageUploader: React.FC<ProductImageUploaderProps> = ({
         }
         if (
           uploadError.message.toLowerCase().includes('row-level security') ||
-          uploadError.message.toLowerCase().includes('violates')
+          uploadError.message.toLowerCase().includes('violates') ||
+          uploadError.message.toLowerCase().includes('unauthorized')
         ) {
           throw new Error(
-            `Storage permission error: Please enable upload policies for 'product-images' in your Supabase project (see Supabase SQL tab).`
+            `Storage permission denied: Sign in with your Supabase Admin account and ensure your User UUID is registered in public.admin_profiles (see Supabase SQL tab).`
           );
         }
         throw new Error(uploadError.message || 'Failed to upload image to Supabase Storage.');
@@ -239,15 +241,15 @@ export const ProductImageUploader: React.FC<ProductImageUploaderProps> = ({
     <div className="space-y-3">
       {/* Label and Actions Header */}
       <div className="flex items-center justify-between">
-        <label className="text-sm font-semibold text-[#C5B9D8] flex items-center gap-1.5">
-          <ImageIcon className="w-4 h-4 text-[#A855F7]" />
+        <label className="text-sm font-semibold text-[#211B25] dark:text-[#C5B9D8] flex items-center gap-1.5">
+          <ImageIcon className="w-4 h-4 text-[#8B42C9] dark:text-[#A855F7]" />
           <span>{label}</span>
-          <span className="text-red-400 text-xs">*</span>
+          <span className="text-red-500 dark:text-red-400 text-xs">*</span>
         </label>
         <button
           type="button"
           onClick={() => setShowManualInput(!showManualInput)}
-          className="text-[11px] text-[#A855F7] hover:text-[#C084FC] flex items-center gap-1 transition-colors cursor-pointer"
+          className="text-[11px] text-[#8B42C9] dark:text-[#A855F7] hover:underline flex items-center gap-1 transition-colors cursor-pointer"
         >
           <LinkIcon className="w-3 h-3" />
           <span>{showManualInput ? 'Hide Manual URL' : 'Or enter URL manually'}</span>
@@ -266,20 +268,14 @@ export const ProductImageUploader: React.FC<ProductImageUploaderProps> = ({
 
       {/* Main Upload / Preview Area */}
       {hasImage ? (
-        /* Image Preview State */
-        <div className="relative rounded-2xl border border-[#3B2D54] bg-[#120D1B] p-4 flex flex-col sm:flex-row items-center gap-4 transition-all">
-          {/* Thumbnail preview */}
-          <div className="relative group shrink-0 w-28 h-28 sm:w-32 sm:h-32 rounded-xl overflow-hidden bg-[#1A1227] border border-[#2E1E4B]">
+        <div className="relative rounded-2xl border border-[#E4DDD0] dark:border-[#3B2D54] bg-[#FAF8F4] dark:bg-[#120D1B] p-4 flex flex-col sm:flex-row items-center gap-4 transition-all">
+          <div className="relative group shrink-0 w-28 h-28 sm:w-32 sm:h-32 rounded-xl overflow-hidden bg-white dark:bg-[#1A1227] border border-[#E4DDD0] dark:border-[#2E1E4B]">
             <img
               src={imageUrl}
               alt="Product Preview"
               referrerPolicy="no-referrer"
               className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
-              onError={e => {
-                // Fallback placeholder styling on image load error
-                (e.currentTarget as HTMLImageElement).src =
-                  'https://images.unsplash.com/photo-1522335789203-aabd1fc54bc9?auto=format&fit=crop&w=400&q=80';
-              }}
+              onError={handleImageError}
             />
             {isUploading && (
               <div className="absolute inset-0 bg-[#0A0710]/80 backdrop-blur-xs flex flex-col items-center justify-center gap-2 p-2 text-center">
@@ -289,64 +285,59 @@ export const ProductImageUploader: React.FC<ProductImageUploaderProps> = ({
             )}
           </div>
 
-          {/* Details & Actions */}
           <div className="flex-1 w-full space-y-2 text-left">
             <div className="flex flex-wrap items-center gap-2">
-              <span className="text-xs font-semibold text-[#F3EFEA]">Active Product Image</span>
+              <span className="text-xs font-semibold text-[#211B25] dark:text-[#F3EFEA]">Active Product Image</span>
               {isSupabaseHosted ? (
-                <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-emerald-950/60 text-emerald-300 border border-emerald-800/40 flex items-center gap-1">
-                  <Sparkles className="w-2.5 h-2.5 text-emerald-400" />
+                <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/40 flex items-center gap-1">
+                  <Sparkles className="w-2.5 h-2.5 text-emerald-600 dark:text-emerald-400" />
                   Supabase Storage
                 </span>
               ) : (
-                <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-[#251A38] text-[#C5B9D8] border border-[#3B2D54]">
+                <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-[#F2EBDD] dark:bg-[#251A38] text-[#211B25] dark:text-[#C5B9D8] border border-[#E4DDD0] dark:border-[#3B2D54]">
                   Asset / Direct URL
                 </span>
               )}
             </div>
 
-            <p className="text-[11px] text-[#8C829B] font-mono truncate max-w-xs sm:max-w-md" title={imageUrl}>
+            <p className="text-[11px] text-[#746B78] dark:text-[#8C829B] font-mono truncate max-w-xs sm:max-w-md" title={imageUrl}>
               {imageUrl}
             </p>
 
             <div className="flex flex-wrap items-center gap-2 pt-1">
-              {/* Replace Image Button */}
               <button
                 type="button"
                 onClick={handleOpenFileDialog}
                 disabled={isUploading}
-                className="px-3 py-1.5 rounded-xl bg-[#251A38] hover:bg-[#34244C] text-[#F3EFEA] text-xs font-medium border border-[#482E70] flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50"
+                className="px-3 py-1.5 rounded-xl bg-[#F2EBDD] dark:bg-[#251A38] hover:bg-[#EAE0CC] dark:hover:bg-[#34244C] text-[#211B25] dark:text-[#F3EFEA] text-xs font-medium border border-[#E4DDD0] dark:border-[#482E70] flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50"
               >
-                <RefreshCw className={`w-3.5 h-3.5 text-[#F5D061] ${isUploading ? 'animate-spin' : ''}`} />
+                <RefreshCw className={`w-3.5 h-3.5 text-[#C99A35] dark:text-[#F5D061] ${isUploading ? 'animate-spin' : ''}`} />
                 <span>Replace Image</span>
               </button>
 
-              {/* View Full Image */}
               <a
                 href={imageUrl}
                 target="_blank"
                 rel="noreferrer noopener"
-                className="px-3 py-1.5 rounded-xl bg-[#1A1227] hover:bg-[#251A38] text-[#C5B9D8] text-xs font-medium border border-[#2E1E4B] flex items-center gap-1.5 transition-colors"
+                className="px-3 py-1.5 rounded-xl bg-white dark:bg-[#1A1227] hover:bg-[#FAF8F4] dark:hover:bg-[#251A38] text-[#746B78] dark:text-[#C5B9D8] text-xs font-medium border border-[#E4DDD0] dark:border-[#2E1E4B] flex items-center gap-1.5 transition-colors"
               >
                 <ExternalLink className="w-3.5 h-3.5" />
                 <span>View Full</span>
               </a>
 
-              {/* Remove Image Button */}
               <button
                 type="button"
                 onClick={handleRemoveImage}
                 disabled={isUploading}
-                className="px-3 py-1.5 rounded-xl bg-red-950/30 hover:bg-red-950/60 text-red-300 text-xs font-medium border border-red-800/40 flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50"
+                className="px-3 py-1.5 rounded-xl bg-red-50 dark:bg-red-950/30 hover:bg-red-100 dark:hover:bg-red-950/60 text-red-700 dark:text-red-300 text-xs font-medium border border-red-200 dark:border-red-800/40 flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50"
               >
-                <Trash2 className="w-3.5 h-3.5 text-red-400" />
+                <Trash2 className="w-3.5 h-3.5 text-red-600 dark:text-red-400" />
                 <span>Remove</span>
               </button>
             </div>
           </div>
         </div>
       ) : (
-        /* Empty Upload Dropzone State */
         <div
           onDragOver={handleDragOver}
           onDragLeave={handleDragLeave}
@@ -354,82 +345,77 @@ export const ProductImageUploader: React.FC<ProductImageUploaderProps> = ({
           onClick={handleOpenFileDialog}
           className={`relative rounded-2xl border-2 border-dashed p-6 sm:p-8 flex flex-col items-center justify-center text-center cursor-pointer transition-all ${
             isDragging
-              ? 'border-[#A855F7] bg-[#221338]/60 shadow-lg shadow-[#A855F7]/10 scale-[1.01]'
-              : 'border-[#3B2D54] hover:border-[#A855F7]/70 bg-[#120D1B] hover:bg-[#181124]'
+              ? 'border-[#8B42C9] dark:border-[#A855F7] bg-[#F2EBDD]/80 dark:bg-[#221338]/60 shadow-lg scale-[1.01]'
+              : 'border-[#E4DDD0] dark:border-[#3B2D54] hover:border-[#8B42C9] dark:hover:border-[#A855F7]/70 bg-[#FAF8F4] dark:bg-[#120D1B] hover:bg-[#F2EBDD]/50 dark:hover:bg-[#181124]'
           }`}
         >
-          {/* Animated upload icon */}
-          <div className="w-14 h-14 rounded-2xl bg-gradient-to-tr from-[#251A38] to-[#3B2456] border border-[#52327A] flex items-center justify-center text-[#F5D061] shadow-inner mb-3 group-hover:scale-110 transition-transform">
+          <div className="w-14 h-14 rounded-2xl bg-[#F2EBDD] dark:bg-gradient-to-tr dark:from-[#251A38] dark:to-[#3B2456] border border-[#E4DDD0] dark:border-[#52327A] flex items-center justify-center text-[#C99A35] dark:text-[#F5D061] shadow-inner mb-3 transition-transform">
             {isUploading ? (
-              <Loader2 className="w-7 h-7 text-[#F5D061] animate-spin" />
+              <Loader2 className="w-7 h-7 animate-spin" />
             ) : (
-              <UploadCloud className="w-7 h-7 text-[#F5D061]" />
+              <UploadCloud className="w-7 h-7" />
             )}
           </div>
 
           <div className="space-y-1 max-w-sm">
-            <h4 className="text-sm font-semibold text-[#F3EFEA]">
+            <h4 className="text-sm font-semibold text-[#211B25] dark:text-[#F3EFEA]">
               {isUploading ? 'Uploading to Supabase...' : 'Choose a product image'}
             </h4>
-            <p className="text-xs text-[#9C8EB2]">
+            <p className="text-xs text-[#746B78] dark:text-[#9C8EB2]">
               Drag and drop an image here, or{' '}
-              <span className="text-[#F5D061] font-semibold underline underline-offset-2">browse computer</span>
+              <span className="text-[#8B42C9] dark:text-[#F5D061] font-semibold underline underline-offset-2">browse computer</span>
             </p>
-            <p className="text-[11px] text-[#7C6E91]">Supports JPG, PNG, or WEBP (up to 5 MB)</p>
+            <p className="text-[11px] text-[#746B78] dark:text-[#7C6E91]">Supports JPG, PNG, or WEBP (up to 5 MB)</p>
           </div>
 
-          {/* Explicit Choose Image Button */}
           <div className="mt-4">
-            <span className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-gradient-to-r from-[#A855F7] to-[#CA8A04] text-[#0A0710] font-semibold text-xs shadow-md shadow-[#A855F7]/15">
-              <UploadCloud className="w-4 h-4 text-[#0A0710]" />
+            <span className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-gradient-to-r from-[#8B42C9] to-[#C99A35] dark:from-[#A855F7] dark:to-[#CA8A04] text-white dark:text-[#0A0710] font-semibold text-xs shadow-md">
+              <UploadCloud className="w-4 h-4" />
               <span>Choose Image from Computer</span>
             </span>
           </div>
         </div>
       )}
 
-      {/* Upload Progress Bar (when actively uploading) */}
       {isUploading && (
-        <div className="p-3 rounded-xl bg-[#1A1227] border border-[#3B2D54] space-y-2">
+        <div className="p-3 rounded-xl bg-[#FAF8F4] dark:bg-[#1A1227] border border-[#E4DDD0] dark:border-[#3B2D54] space-y-2">
           <div className="flex items-center justify-between text-xs">
-            <span className="text-[#C5B9D8] flex items-center gap-1.5 font-medium">
-              <Loader2 className="w-3.5 h-3.5 text-[#F5D061] animate-spin" />
+            <span className="text-[#211B25] dark:text-[#C5B9D8] flex items-center gap-1.5 font-medium">
+              <Loader2 className="w-3.5 h-3.5 text-[#C99A35] dark:text-[#F5D061] animate-spin" />
               <span>Uploading image to Supabase Storage bucket &apos;product-images&apos;...</span>
             </span>
-            <span className="text-[#F5D061] font-mono font-semibold">{uploadProgress}%</span>
+            <span className="text-[#C99A35] dark:text-[#F5D061] font-mono font-semibold">{uploadProgress}%</span>
           </div>
-          <div className="w-full h-2 rounded-full bg-[#0D0914] overflow-hidden">
+          <div className="w-full h-2 rounded-full bg-[#E4DDD0] dark:bg-[#0D0914] overflow-hidden">
             <div
-              className="h-full bg-gradient-to-r from-[#A855F7] via-[#C084FC] to-[#F5D061] transition-all duration-200 rounded-full"
+              className="h-full bg-gradient-to-r from-[#8B42C9] to-[#C99A35] dark:from-[#A855F7] dark:via-[#C084FC] dark:to-[#F5D061] transition-all duration-200 rounded-full"
               style={{ width: `${uploadProgress}%` }}
             />
           </div>
         </div>
       )}
 
-      {/* Success Feedback */}
       {successMessage && !isUploading && (
-        <div className="p-3 rounded-xl bg-emerald-950/40 border border-emerald-800/40 text-emerald-300 text-xs flex items-center gap-2">
-          <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+        <div className="p-3 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800/40 text-emerald-700 dark:text-emerald-300 text-xs flex items-center gap-2">
+          <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
           <span>{successMessage}</span>
         </div>
       )}
 
-      {/* Error Feedback with Retry */}
       {error && !isUploading && (
-        <div className="p-3.5 rounded-xl bg-red-950/40 border border-red-800/50 text-red-200 text-xs space-y-2">
+        <div className="p-3.5 rounded-xl bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800/50 text-red-700 dark:text-red-200 text-xs space-y-2">
           <div className="flex items-start gap-2">
-            <AlertTriangle className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />
+            <AlertTriangle className="w-4 h-4 text-red-600 dark:text-red-400 shrink-0 mt-0.5" />
             <div className="space-y-1">
-              <p className="font-semibold text-red-300">Upload Issue</p>
-              <p className="text-[11px] text-red-200/90 leading-relaxed">{error}</p>
+              <p className="font-semibold">Upload Issue</p>
+              <p className="text-[11px] leading-relaxed">{error}</p>
             </div>
           </div>
           <div className="flex items-center gap-2 pt-1 pl-6">
             <button
               type="button"
               onClick={handleOpenFileDialog}
-              className="px-2.5 py-1 rounded-lg bg-red-900/60 hover:bg-red-900 text-white text-[11px] font-medium flex items-center gap-1 cursor-pointer transition-colors"
+              className="px-2.5 py-1 rounded-lg bg-red-600 hover:bg-red-700 text-white text-[11px] font-medium flex items-center gap-1 cursor-pointer transition-colors"
             >
               <RefreshCw className="w-3 h-3" />
               <span>Try Again</span>
@@ -440,7 +426,7 @@ export const ProductImageUploader: React.FC<ProductImageUploaderProps> = ({
                 setShowManualInput(true);
                 setError(null);
               }}
-              className="px-2.5 py-1 rounded-lg bg-[#1A1227] hover:bg-[#251A38] text-[#C5B9D8] text-[11px] font-medium transition-colors cursor-pointer"
+              className="px-2.5 py-1 rounded-lg bg-white dark:bg-[#1A1227] border border-[#E4DDD0] dark:border-[#34244C] text-[#211B25] dark:text-[#C5B9D8] text-[11px] font-medium transition-colors cursor-pointer"
             >
               Enter URL Manually
             </button>
@@ -448,10 +434,9 @@ export const ProductImageUploader: React.FC<ProductImageUploaderProps> = ({
         </div>
       )}
 
-      {/* Optional Collapsible Manual URL Field (for power user / emergency override) */}
       {showManualInput && (
-        <div className="p-3 rounded-xl bg-[#0F0B17] border border-[#2E1E4B] space-y-2">
-          <label className="text-[11px] font-medium text-[#9C8EB2] block">
+        <div className="p-3 rounded-xl bg-[#FAF8F4] dark:bg-[#0F0B17] border border-[#E4DDD0] dark:border-[#2E1E4B] space-y-2">
+          <label className="text-[11px] font-medium text-[#746B78] dark:text-[#9C8EB2] block">
             Direct Image URL or Path (Override)
           </label>
           <div className="flex gap-2">
@@ -460,12 +445,12 @@ export const ProductImageUploader: React.FC<ProductImageUploaderProps> = ({
               value={manualUrlInput}
               onChange={e => setManualUrlInput(e.target.value)}
               placeholder="https://... or /images/products/..."
-              className="flex-1 px-3 py-1.5 text-xs bg-[#1A1227] border border-[#34244C] rounded-xl text-[#F3EFEA] focus:outline-none focus:border-[#A855F7]"
+              className="flex-1 px-3 py-1.5 text-xs bg-white dark:bg-[#1A1227] border border-[#E4DDD0] dark:border-[#34244C] rounded-xl text-[#211B25] dark:text-[#F3EFEA] focus:outline-none focus:border-[#8B42C9] dark:focus:border-[#A855F7]"
             />
             <button
               type="button"
               onClick={handleApplyManualUrl}
-              className="px-3 py-1.5 rounded-xl bg-[#251A38] hover:bg-[#34244C] text-[#F5D061] text-xs font-semibold border border-[#482E70] transition-colors cursor-pointer"
+              className="px-3 py-1.5 rounded-xl bg-[#F2EBDD] dark:bg-[#251A38] hover:bg-[#EAE0CC] dark:hover:bg-[#34244C] text-[#211B25] dark:text-[#F5D061] text-xs font-semibold border border-[#E4DDD0] dark:border-[#482E70] transition-colors cursor-pointer"
             >
               Apply
             </button>

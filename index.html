@@ -37,8 +37,28 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,100..1000;1,9..40,100..1000&family=Playfair+Display:ital,wght@0,400..900;1,400..900&display=swap" rel="stylesheet">
+
+    <!-- Synchronous Theme Init (Prevents Initial Flicker) -->
+    <script>
+      (function () {
+        try {
+          var saved = localStorage.getItem('novaluxe_theme_preference');
+          var theme = saved === 'light' || saved === 'dark' ? saved : 'dark';
+          var root = document.documentElement;
+          if (theme === 'dark') {
+            root.classList.add('dark');
+            root.style.colorScheme = 'dark';
+          } else {
+            root.classList.remove('dark');
+            root.style.colorScheme = 'light';
+          }
+        } catch (e) {
+          document.documentElement.classList.add('dark');
+        }
+      })();
+    </script>
   </head>
-  <body class="bg-[#0D0B12] text-[#F3EFEA] antialiased selection:bg-[#7C3AED] selection:text-white min-h-screen">
+  <body class="bg-[#FAF8F4] text-[#211B25] dark:bg-[#0D0B12] dark:text-[#F3EFEA] antialiased selection:bg-[#8B42C9] dark:selection:bg-[#7C3AED] selection:text-white min-h-screen transition-colors duration-200">
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

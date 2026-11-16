@@ -29,7 +29,9 @@ function verifySessionToken(token: string, secret: string): { valid: boolean; em
     const expectedPayload = `${email}:${expiry}`;
     const expectedSig = crypto.createHmac('sha256', secret).update(expectedPayload).digest('hex');
 
-    if (sig === expectedSig) {
+    const sigBuf = Buffer.from(String(sig), 'utf8');
+    const expBuf = Buffer.from(expectedSig, 'utf8');
+    if (sigBuf.length === expBuf.length && crypto.timingSafeEqual(sigBuf, expBuf)) {
       return { valid: true, email };
     }
   } catch {

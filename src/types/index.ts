@@ -23,6 +23,13 @@ export type Product = {
   isBestSeller: boolean;
   images: string[];
   variants?: ProductVariant[];
+  brand?: string;
+  productType?: string;
+  sizeOrVolume?: string;
+  specifications?: string;
+  keyIngredients?: string[];
+  features?: string[];
+  tags?: string[];
   createdAt: string;
   updatedAt: string;
 };
@@ -102,6 +109,33 @@ export type Enquiry = {
   createdAt: string;
 };
 
+export type PromoFrequency = 'once_per_session' | 'once_per_day' | 'always';
+
+export type PromoCampaignConfig = {
+  enabled: boolean;
+  mediaType: 'video' | 'image';
+  mediaUrl: string;
+  posterUrl: string;
+  title: string;
+  subtitle: string;
+  ctaText: string;
+  destinationPath: string;
+  frequency: PromoFrequency;
+  startDate: string;
+  endDate: string;
+};
+
+export type BulkUploadHistoryEntry = {
+  id: string;
+  createdAt: string;
+  uploadedCount: number;
+  processedCount: number;
+  awaitingReviewCount: number;
+  savedCount: number;
+  failedCount: number;
+  notes?: string;
+};
+
 export type SiteSettings = {
   businessName: string;
   businessCategory: string;
@@ -124,6 +158,7 @@ export type SiteSettings = {
   aboutStory: string;
   mission: string;
   vision: string;
+  promoCampaign: PromoCampaignConfig;
 };
 
 export type CartItem = {
