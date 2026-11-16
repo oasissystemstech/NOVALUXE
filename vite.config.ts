@@ -3,6 +3,12 @@ import react from '@vitejs/plugin-react';
 import path from 'path';
 import {defineConfig} from 'vite';
 
+function cleanEnv(val: unknown, fallback: string): string {
+  if (!val || typeof val !== 'string') return fallback;
+  const cleaned = val.trim().replace(/^["']|["']$/g, '').trim();
+  return cleaned || fallback;
+}
+
 function adminAuthDevPlugin() {
   return {
     name: 'admin-auth-dev-api',
@@ -18,10 +24,10 @@ function adminAuthDevPlugin() {
               const bodyData = JSON.parse(body || '{}');
               const identifier = String(bodyData.username || bodyData.email || '').trim().toLowerCase();
               const password = String(bodyData.password || '');
-              const SERVER_ADMIN_USERNAME = (process.env.ADMIN_USERNAME || 'sennelgroup').trim().toLowerCase();
-              const SERVER_ADMIN_EMAIL = (process.env.ADMIN_EMAIL || 'sennelgroup@gmail.com').trim().toLowerCase();
-              const SERVER_ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'Sennel3.9@2026$';
-              const SERVER_SESSION_SECRET = process.env.ADMIN_SESSION_SECRET || 'novaluxe-sennel-secure-session-key-2026';
+              const SERVER_ADMIN_USERNAME = cleanEnv(process.env.ADMIN_USERNAME, 'sennelgroup').toLowerCase();
+              const SERVER_ADMIN_EMAIL = cleanEnv(process.env.ADMIN_EMAIL, 'sennelgroup@gmail.com').toLowerCase();
+              const SERVER_ADMIN_PASSWORD = cleanEnv(process.env.ADMIN_PASSWORD, 'Sennel3.9@2026$');
+              const SERVER_SESSION_SECRET = cleanEnv(process.env.ADMIN_SESSION_SECRET, 'novaluxe-sennel-secure-session-key-2026');
 
               if (!identifier || !password) {
                 res.statusCode = 400;
@@ -31,7 +37,11 @@ function adminAuthDevPlugin() {
 
               const validIdentifiers = ['sennelgroup', 'sennelgroup@gmail.com', SERVER_ADMIN_USERNAME, SERVER_ADMIN_EMAIL];
               const identifierMatches = validIdentifiers.includes(identifier);
-              const passwordMatches = password === SERVER_ADMIN_PASSWORD || password === 'Sennel3.9@2026$';
+              const passwordMatches =
+                password === SERVER_ADMIN_PASSWORD ||
+                password.trim() === SERVER_ADMIN_PASSWORD ||
+                password === 'Sennel3.9@2026$' ||
+                password.trim() === 'Sennel3.9@2026$';
 
               if (!identifierMatches || !passwordMatches) {
                 res.statusCode = 401;
@@ -70,8 +80,8 @@ function adminAuthDevPlugin() {
         if (req.url === '/api/admin/verify' && (req.method === 'GET' || req.method === 'POST')) {
           const authHeader = req.headers['authorization'];
           const token = authHeader?.startsWith('Bearer ') ? authHeader.substring(7) : null;
-          const SERVER_SESSION_SECRET = process.env.ADMIN_SESSION_SECRET || 'novaluxe-sennel-secure-session-key-2026';
-          const SERVER_ADMIN_EMAIL = process.env.ADMIN_EMAIL || 'sennelgroup@gmail.com';
+          const SERVER_SESSION_SECRET = cleanEnv(process.env.ADMIN_SESSION_SECRET, 'novaluxe-sennel-secure-session-key-2026');
+          const SERVER_ADMIN_EMAIL = cleanEnv(process.env.ADMIN_EMAIL, 'sennelgroup@gmail.com');
 
           if (!token) {
             res.statusCode = 401;

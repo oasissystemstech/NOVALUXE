@@ -5,8 +5,13 @@ const DEFAULT_SUPABASE_URL = 'https://srclselecvagahijkonu.supabase.co';
 const DEFAULT_SUPABASE_ANON_KEY =
   'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNyY2xzZWxlY3ZhZ2FoaWprb251Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTI3NzY1NTQsImV4cCI6MjEwODM1MjU1NH0.8kM87krmxlRCNQcihEc5OgmVwNGtuTdgegzyokwgskQ';
 
-const rawUrl = import.meta.env.VITE_SUPABASE_URL || DEFAULT_SUPABASE_URL;
-const rawKey = import.meta.env.VITE_SUPABASE_ANON_KEY || DEFAULT_SUPABASE_ANON_KEY;
+function sanitizeEnv(val: unknown): string {
+  if (!val || typeof val !== 'string') return '';
+  return val.trim().replace(/^["']|["']$/g, '').trim();
+}
+
+const rawUrl = sanitizeEnv(import.meta.env.VITE_SUPABASE_URL) || DEFAULT_SUPABASE_URL;
+const rawKey = sanitizeEnv(import.meta.env.VITE_SUPABASE_ANON_KEY) || DEFAULT_SUPABASE_ANON_KEY;
 
 // Sanitize URL in case /rest/v1/ was provided in the input string
 export const supabaseUrl = rawUrl.replace(/\/rest\/v1\/?$/, '').replace(/\/+$/, '');

@@ -11,10 +11,13 @@ interface VercelResponse extends ServerResponse {
   json: (data: any) => VercelResponse;
 }
 
-const SERVER_SESSION_SECRET = process.env.ADMIN_SESSION_SECRET || 'novaluxe-sennel-secure-session-key-2026';
-const SERVER_ADMIN_EMAIL = process.env.ADMIN_EMAIL || 'sennelgroup@gmail.com';
+function cleanEnv(val: unknown, fallback: string): string {
+  if (!val || typeof val !== 'string') return fallback;
+  const cleaned = val.trim().replace(/^["']|["']$/g, '').trim();
+  return cleaned || fallback;
+}
 
-function verifySessionToken(token: string): { valid: boolean; email?: string } {
+function verifySessionToken(token: string, secret: string): { valid: boolean; email?: string } {
   try {
     const raw = Buffer.from(token, 'base64').toString('utf-8');
     const parsed = JSON.parse(raw);
@@ -24,7 +27,7 @@ function verifySessionToken(token: string): { valid: boolean; email?: string } {
     if (Date.now() > expiry) return { valid: false };
 
     const expectedPayload = `${email}:${expiry}`;
-    const expectedSig = crypto.createHmac('sha256', SERVER_SESSION_SECRET).update(expectedPayload).digest('hex');
+    const expectedSig = crypto.createHmac('sha256', secret).update(expectedPayload).digest('hex');
 
     if (sig === expectedSig) {
       return { valid: true, email };
@@ -55,7 +58,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(401).json({ valid: false, error: 'No authorization token provided' });
   }
 
-  const verification = verifySessionToken(token);
+  const serverSessionSecret = cleanEnv(process.env.ADMIN_SESSION_SECRET, 'novaluxe-sennel-secure-session-key-2026');
+  const serverAdminEmail = cleanEnv(process.env.ADMIN_EMAIL, 'sennelgroup@gmail.com');
+
+  const verification = verifySessionToken(token, serverSessionSecret);
   if (!verification.valid) {
     return res.status(401).json({ valid: false, error: 'Session token is invalid or expired' });
   }
@@ -64,7 +70,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     valid: true,
     user: {
       id: 'usr-admin-sennel',
-      email: verification.email || SERVER_ADMIN_EMAIL,
+      email: verification.email || serverAdminEmail,
       role: 'super_admin'
     }
   });
