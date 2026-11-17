@@ -7,10 +7,18 @@ interface AdminUser {
   role: 'admin' | 'super_admin';
 }
 
+export interface PersistenceStatus {
+  supabaseClientSession: boolean;
+  serverServiceRole: boolean;
+  diagnostic: string | null;
+}
+
 interface AuthContextType {
   isAdmin: boolean;
   isAuthLoading: boolean;
   adminUser: AdminUser | null;
+  persistenceStatus: PersistenceStatus;
+  recheckPersistenceStatus: () => Promise<PersistenceStatus>;
   login: (email: string, pass: string) => Promise<{ success: boolean; error?: string }>;
   logout: () => Promise<void>;
   getAuthToken: () => Promise<string | null>;
@@ -42,13 +50,78 @@ async function verifySupabaseAdminProfile(userId: string): Promise<'admin' | 'su
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [adminUser, setAdminUser] = useState<AdminUser | null>(null);
   const [isAuthLoading, setIsAuthLoading] = useState<boolean>(true);
+  const [persistenceStatus, setPersistenceStatus] = useState<PersistenceStatus>({
+    supabaseClientSession: false,
+    serverServiceRole: false,
+    diagnostic: null
+  });
 
   const clearSession = useCallback(() => {
     setAdminUser(null);
+    setPersistenceStatus({
+      supabaseClientSession: false,
+      serverServiceRole: false,
+      diagnostic: null
+    });
     try {
       sessionStorage.removeItem(ADMIN_SESSION_USER_KEY);
       sessionStorage.removeItem(ADMIN_SESSION_TOKEN_KEY);
     } catch {}
+  }, []);
+
+  const evaluatePersistenceCapabilities = useCallback(async (overrideDiagnostic?: string | null): Promise<PersistenceStatus> => {
+    let supabaseClientSession = false;
+    let serverServiceRole = false;
+    let diagnostic: string | null = overrideDiagnostic || null;
+
+    if (isSupabaseConfigured && supabase) {
+      try {
+        const { data } = await supabase.auth.getSession();
+        if (data.session?.user?.id) {
+          const role = await verifySupabaseAdminProfile(data.session.user.id);
+          if (role) {
+            supabaseClientSession = true;
+          } else if (!diagnostic) {
+            diagnostic = `Supabase Auth signed in, but User UUID (${data.session.user.id}) is not registered in public.admin_profiles.`;
+          }
+        }
+      } catch {
+        // Ignore check failure
+      }
+    }
+
+    let token: string | null = null;
+    try {
+      token = sessionStorage.getItem(ADMIN_SESSION_TOKEN_KEY);
+    } catch {}
+
+    if (token) {
+      try {
+        const res = await fetch('/api/admin/persist', {
+          method: 'GET',
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        if (res.ok) {
+          const data = await res.json().catch(() => ({}));
+          serverServiceRole = Boolean(data?.hasServiceRole);
+        }
+      } catch {}
+    }
+
+    if (!supabaseClientSession && !serverServiceRole && !diagnostic) {
+      diagnostic =
+        'Remote writes require either a Supabase Auth admin user listed in public.admin_profiles OR SUPABASE_SERVICE_ROLE_KEY set on the server.';
+    } else if (supabaseClientSession || serverServiceRole) {
+      diagnostic = null;
+    }
+
+    const nextStatus: PersistenceStatus = {
+      supabaseClientSession,
+      serverServiceRole,
+      diagnostic
+    };
+    setPersistenceStatus(nextStatus);
+    return nextStatus;
   }, []);
 
   // Check and verify existing session on mount before granting any admin UI access
@@ -73,6 +146,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 try {
                   sessionStorage.setItem(ADMIN_SESSION_USER_KEY, JSON.stringify(verifiedUser));
                 } catch {}
+                await evaluatePersistenceCapabilities();
                 return;
               }
               // Clear unprivileged Supabase session
@@ -104,6 +178,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 try {
                   sessionStorage.setItem(ADMIN_SESSION_USER_KEY, JSON.stringify(data.user));
                 } catch {}
+                await evaluatePersistenceCapabilities();
                 return;
               }
             }
@@ -143,6 +218,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             try {
               sessionStorage.setItem(ADMIN_SESSION_USER_KEY, JSON.stringify(user));
             } catch {}
+            evaluatePersistenceCapabilities().catch(() => {});
           } else {
             await supabase?.auth.signOut().catch(() => {});
             let hasBackendToken = false;
@@ -173,13 +249,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return () => {
       isMounted = false;
     };
-  }, [clearSession]);
+  }, [clearSession, evaluatePersistenceCapabilities]);
 
   const login = async (identifierInput: string, pass: string): Promise<{ success: boolean; error?: string }> => {
     const trimmed = identifierInput.trim();
     if (!trimmed || !pass) {
       return { success: false, error: 'Please enter both username/email and password.' };
     }
+
+    let supabaseDiagnostic: string | null = null;
 
     // 1. Try Supabase Auth first if configured and user entered an email, requiring admin_profiles verification
     if (isSupabaseConfigured && supabase && trimmed.includes('@')) {
@@ -200,6 +278,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             try {
               sessionStorage.setItem(ADMIN_SESSION_USER_KEY, JSON.stringify(user));
             } catch {}
+            await evaluatePersistenceCapabilities();
             return { success: true };
           }
           // Authenticated in Supabase Auth, but NOT listed in admin_profiles
@@ -208,9 +287,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             success: false,
             error: 'This account does not have NOVALUXE administrator privileges in admin_profiles.'
           };
+        } else if (error) {
+          supabaseDiagnostic = `Supabase Auth sign-in note: ${error.message}`;
         }
-      } catch {
-        // Fall back to serverless admin auth endpoint
+      } catch (err: any) {
+        supabaseDiagnostic = err?.message || 'Supabase Auth request failed.';
       }
     }
 
@@ -237,7 +318,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           sessionStorage.setItem(ADMIN_SESSION_TOKEN_KEY, data.token);
         } catch {}
 
-        // Also establish Supabase Auth session in background (for RLS-protected Storage/DB writes)
+        // Also establish Supabase Auth session for RLS-protected Storage/DB writes
         if (isSupabaseConfigured && supabase && data.supabaseEmail) {
           try {
             const expectedEmail = String(data.supabaseEmail).trim().toLowerCase();
@@ -256,16 +337,28 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             }
 
             if (!reuseExisting) {
-              await supabase.auth.signInWithPassword({
+              const { data: signData, error: signErr } = await supabase.auth.signInWithPassword({
                 email: expectedEmail,
                 password: pass
               });
+              if (signErr) {
+                supabaseDiagnostic = `Supabase Auth could not sign in as ${expectedEmail} (${signErr.message}).`;
+              } else if (signData?.user?.id) {
+                const role = await verifySupabaseAdminProfile(signData.user.id);
+                if (!role) {
+                  supabaseDiagnostic = `Signed into Supabase Auth (${expectedEmail}), but User UUID ${signData.user.id} is missing from public.admin_profiles.`;
+                  await supabase.auth.signOut().catch(() => {});
+                } else {
+                  supabaseDiagnostic = null;
+                }
+              }
             }
-          } catch {
-            // Non-blocking: backend HMAC session remains active even if Supabase Auth user isn't provisioned yet
+          } catch (err: any) {
+            supabaseDiagnostic = err?.message || 'Background Supabase Auth check failed.';
           }
         }
 
+        await evaluatePersistenceCapabilities(supabaseDiagnostic);
         return { success: true };
       }
 
@@ -313,6 +406,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         isAdmin: Boolean(adminUser),
         isAuthLoading,
         adminUser,
+        persistenceStatus,
+        recheckPersistenceStatus: () => evaluatePersistenceCapabilities(),
         login,
         logout,
         getAuthToken

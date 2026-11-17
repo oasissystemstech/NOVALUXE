@@ -16,6 +16,7 @@ export function getSupabaseServerConfig(envSource: Record<string, string | undef
   return {
     url,
     apiKey: serviceRoleKey || anonKey,
+    serviceRoleKey,
     anonKey,
     hasServiceRole: Boolean(serviceRoleKey),
     isConfigured: Boolean(url && (serviceRoleKey || anonKey))
@@ -41,8 +42,13 @@ export function getClientIp(req: IncomingMessage): string {
   return req.socket?.remoteAddress || 'unknown';
 }
 
+const EPHEMERAL_RATE_LIMIT_SALT = crypto.randomBytes(32).toString('hex');
+
 export function hashClientIp(ip: string, envSource: Record<string, string | undefined> = process.env): string {
-  const salt = cleanEnv(envSource.ADMIN_SESSION_SECRET, 'novaluxe-rate-limit-salt');
+  const salt =
+    cleanEnv(envSource.RATE_LIMIT_SALT, '') ||
+    cleanEnv(envSource.ADMIN_SESSION_SECRET, '') ||
+    EPHEMERAL_RATE_LIMIT_SALT;
   return crypto.createHmac('sha256', salt).update(ip || 'unknown').digest('hex').slice(0, 32);
 }
 

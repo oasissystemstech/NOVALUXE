@@ -3,12 +3,18 @@ import { X, Volume2, VolumeX, Play, Pause, ArrowRight, Sparkles } from 'lucide-r
 import { useSettings } from '../context/SettingsContext';
 import { PromoCampaignConfig } from '../types';
 import { DEFAULT_HERO_IMAGE, handleImageError } from '../lib/imageUtils';
+import {
+  getActivePromoMediaUrl,
+  inferVideoMimeType,
+  normalizePromoCampaign
+} from '../lib/promoUtils';
 
 interface PromotionalFlyerModalProps {
   onNavigate: (path: string, param?: string) => void;
   forceOpen?: boolean;
   onClosePreview?: () => void;
   previewConfig?: PromoCampaignConfig;
+  previewViewport?: 'desktop' | 'mobile';
 }
 
 const SESSION_DISMISS_KEY = 'novaluxe_promo_dismissed_session';
@@ -53,16 +59,60 @@ export const PromotionalFlyerModal: React.FC<PromotionalFlyerModalProps> = ({
   onNavigate,
   forceOpen = false,
   onClosePreview,
-  previewConfig
+  previewConfig,
+  previewViewport
 }) => {
-  const { settings } = useSettings();
-  const campaign = previewConfig || settings.promoCampaign;
+  const { settings, isHydratedRemote } = useSettings();
+  const campaign = normalizePromoCampaign(previewConfig || settings.promoCampaign);
+
+  const [isMobileViewport, setIsMobileViewport] = useState<boolean>(() => {
+    if (previewViewport) return previewViewport === 'mobile';
+    if (typeof window !== 'undefined' && window.matchMedia) {
+      return window.matchMedia('(max-width: 767px)').matches;
+    }
+    return false;
+  });
 
   const [isOpen, setIsOpen] = useState<boolean>(forceOpen);
   const [videoFailed, setVideoFailed] = useState(false);
+  const [autoplayBlocked, setAutoplayBlocked] = useState(false);
   const [isMuted, setIsMuted] = useState(true);
   const [isPaused, setIsPaused] = useState(false);
   const videoRef = useRef<HTMLVideoElement | null>(null);
+
+  useEffect(() => {
+    if (previewViewport) {
+      setIsMobileViewport(previewViewport === 'mobile');
+      return;
+    }
+    if (typeof window === 'undefined' || !window.matchMedia) return;
+    const mq = window.matchMedia('(max-width: 767px)');
+    const updateMatch = () => setIsMobileViewport(mq.matches);
+    updateMatch();
+    if (typeof mq.addEventListener === 'function') {
+      mq.addEventListener('change', updateMatch);
+      return () => mq.removeEventListener('change', updateMatch);
+    }
+    mq.addListener(updateMatch);
+    return () => mq.removeListener(updateMatch);
+  }, [previewViewport]);
+
+  const activeDeviceBehavior = isMobileViewport
+    ? campaign.mobileBehavior || 'autoplay_muted'
+    : campaign.desktopBehavior || 'autoplay_muted';
+
+  const isDisabledForPlatform =
+    campaign.displayMode === 'disabled' ||
+    !campaign.enabled ||
+    (!forceOpen && activeDeviceBehavior === 'hide');
+
+  // Reset error & playback state whenever the active promotional media URL or mode changes
+  const activeMediaUrl = getActivePromoMediaUrl(campaign);
+  useEffect(() => {
+    setVideoFailed(false);
+    setAutoplayBlocked(false);
+    setIsPaused(false);
+  }, [activeMediaUrl, campaign.displayMode, isMobileViewport]);
 
   useEffect(() => {
     if (forceOpen) {
@@ -71,7 +121,12 @@ export const PromotionalFlyerModal: React.FC<PromotionalFlyerModalProps> = ({
       return;
     }
 
-    if (!campaign.enabled) {
+    // Wait for remote Supabase settings hydration so stale local defaults do not flash on mobile/fresh browsers
+    if (!isHydratedRemote) {
+      return;
+    }
+
+    if (isDisabledForPlatform) {
       setIsOpen(false);
       return;
     }
@@ -88,10 +143,75 @@ export const PromotionalFlyerModal: React.FC<PromotionalFlyerModalProps> = ({
 
     const timer = window.setTimeout(() => {
       setIsOpen(true);
-    }, 550);
+    }, 450);
 
     return () => window.clearTimeout(timer);
-  }, [forceOpen, campaign.enabled, campaign.startDate, campaign.endDate, campaign.frequency]);
+  }, [
+    forceOpen,
+    isHydratedRemote,
+    isDisabledForPlatform,
+    campaign.startDate,
+    campaign.endDate,
+    campaign.frequency
+  ]);
+
+  const showPosterOnlyOnMobile =
+    campaign.displayMode === 'video' &&
+    isMobileViewport &&
+    campaign.mobileBehavior === 'poster_fallback';
+
+  const showVideo =
+    campaign.displayMode === 'video' &&
+    Boolean(activeMediaUrl) &&
+    !videoFailed &&
+    !showPosterOnlyOnMobile &&
+    activeDeviceBehavior !== 'hide';
+
+  // Ensure mobile Safari & Chrome inline playback + autoplay or explicit tap-to-play overlay
+  useEffect(() => {
+    const videoEl = videoRef.current;
+    if (!isOpen || !showVideo || !videoEl) return;
+
+    videoEl.setAttribute('playsinline', '');
+    videoEl.setAttribute('webkit-playsinline', 'true');
+    videoEl.playsInline = true;
+    videoEl.muted = isMuted;
+    videoEl.defaultMuted = true;
+
+    if (activeDeviceBehavior === 'click_to_play') {
+      setIsPaused(true);
+      setAutoplayBlocked(true);
+      return;
+    }
+
+    let cancelled = false;
+    const startPlayback = async () => {
+      try {
+        videoEl.muted = true;
+        videoEl.defaultMuted = true;
+        const playPromise = videoEl.play();
+        if (playPromise !== undefined) {
+          await playPromise;
+        }
+        if (!cancelled) {
+          setIsPaused(false);
+          setAutoplayBlocked(false);
+        }
+      } catch {
+        // Mobile Low Power Mode / Data Saver blocked autoplay:
+        // Keep the <video> mounted and present an interactive Tap-to-Play button instead of falling back to an image.
+        if (!cancelled) {
+          setIsPaused(true);
+          setAutoplayBlocked(true);
+        }
+      }
+    };
+
+    startPlayback();
+    return () => {
+      cancelled = true;
+    };
+  }, [isOpen, showVideo, activeMediaUrl, activeDeviceBehavior]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -126,15 +246,22 @@ export const PromotionalFlyerModal: React.FC<PromotionalFlyerModalProps> = ({
     setIsMuted(nextMuted);
     if (videoRef.current) {
       videoRef.current.muted = nextMuted;
+      videoRef.current.defaultMuted = nextMuted;
     }
   };
 
-  const togglePlayPause = () => {
+  const togglePlayPause = async () => {
     const videoEl = videoRef.current;
     if (!videoEl) return;
     if (videoEl.paused) {
-      videoEl.play().catch(() => {});
-      setIsPaused(false);
+      try {
+        videoEl.playsInline = true;
+        await videoEl.play();
+        setIsPaused(false);
+        setAutoplayBlocked(false);
+      } catch {
+        setIsPaused(true);
+      }
     } else {
       videoEl.pause();
       setIsPaused(true);
@@ -142,9 +269,14 @@ export const PromotionalFlyerModal: React.FC<PromotionalFlyerModalProps> = ({
   };
 
   if (!isOpen) return null;
+  if (!forceOpen && isDisabledForPlatform) return null;
 
-  const showVideo = campaign.mediaType === 'video' && Boolean(campaign.mediaUrl) && !videoFailed;
   const fallbackPoster = campaign.posterUrl || DEFAULT_HERO_IMAGE;
+  const activeImageSrc =
+    campaign.displayMode === 'image'
+      ? campaign.imageUrl || activeMediaUrl || fallbackPoster
+      : fallbackPoster;
+  const videoMime = inferVideoMimeType(activeMediaUrl);
 
   return (
     <div
@@ -160,7 +292,11 @@ export const PromotionalFlyerModal: React.FC<PromotionalFlyerModalProps> = ({
       />
 
       {/* Modal Container */}
-      <div className="relative z-10 w-full max-w-xl rounded-3xl overflow-hidden bg-[#120D1B] border border-[#4C346E] shadow-2xl shadow-black/60 flex flex-col max-h-[92vh]">
+      <div
+        className={`relative z-10 w-full ${
+          previewViewport === 'mobile' ? 'max-w-[360px]' : 'max-w-xl'
+        } rounded-3xl overflow-hidden bg-[#120D1B] border border-[#4C346E] shadow-2xl shadow-black/60 flex flex-col max-h-[92vh]`}
+      >
         {/* Top Bar with Subtle Gold Accent */}
         <div className="h-1 w-full bg-gradient-to-r from-[#8B42C9] via-[#F5D061] to-[#C99A35]" />
 
@@ -174,23 +310,51 @@ export const PromotionalFlyerModal: React.FC<PromotionalFlyerModalProps> = ({
           <X className="w-4 h-4" />
         </button>
 
-        {/* Media Stage (preserves original flyer/video proportions via object-contain) */}
-        <div className="relative bg-[#09060F] flex items-center justify-center overflow-hidden">
+        {/* Media Stage */}
+        <div className="relative bg-[#09060F] flex items-center justify-center overflow-hidden min-h-[220px]">
           {showVideo ? (
             <>
               <video
                 ref={videoRef}
-                src={campaign.mediaUrl}
+                key={activeMediaUrl}
                 poster={fallbackPoster}
-                autoPlay
+                autoPlay={activeDeviceBehavior === 'autoplay_muted'}
                 muted={isMuted}
                 playsInline
                 loop
+                preload={activeDeviceBehavior === 'click_to_play' ? 'metadata' : 'auto'}
+                onLoadedData={() => setVideoFailed(false)}
+                onPlay={() => {
+                  setIsPaused(false);
+                  setAutoplayBlocked(false);
+                }}
+                onPause={() => setIsPaused(true)}
                 onError={() => setVideoFailed(true)}
-                className="w-full max-h-[55vh] object-contain"
-              />
+                className="w-full max-h-[55vh] object-contain bg-black"
+              >
+                <source src={activeMediaUrl} type={videoMime} />
+                {videoMime !== 'video/mp4' && <source src={activeMediaUrl} />}
+              </video>
+
+              {/* Prominent Tap-to-Play Overlay when Mobile Browser Policy or Click-to-Play Pauses Autoplay */}
+              {(autoplayBlocked || isPaused) && (
+                <button
+                  type="button"
+                  onClick={togglePlayPause}
+                  aria-label="Play promotional video"
+                  className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-2 bg-black/35 hover:bg-black/45 transition-colors cursor-pointer"
+                >
+                  <span className="w-14 h-14 rounded-full bg-[#120D1B]/90 border border-[#F5D061]/70 text-[#F5D061] flex items-center justify-center shadow-2xl">
+                    <Play className="w-6 h-6 ml-0.5" />
+                  </span>
+                  <span className="px-3 py-1 rounded-full bg-black/75 text-[11px] font-semibold tracking-wider uppercase text-[#F3EFEA] border border-white/15">
+                    Tap to Play Video
+                  </span>
+                </button>
+              )}
+
               {/* Custom Minimal Playback & Audio Controls */}
-              <div className="absolute bottom-3 right-3 flex items-center gap-2">
+              <div className="absolute bottom-3 right-3 z-20 flex items-center gap-2">
                 <button
                   type="button"
                   onClick={togglePlayPause}
@@ -212,7 +376,7 @@ export const PromotionalFlyerModal: React.FC<PromotionalFlyerModalProps> = ({
           ) : (
             <div className="relative w-full flex items-center justify-center bg-gradient-to-br from-[#170D28] via-[#10091C] to-[#08050E]">
               <img
-                src={campaign.mediaType === 'image' && campaign.mediaUrl ? campaign.mediaUrl : fallbackPoster}
+                src={activeImageSrc}
                 alt={campaign.title || 'NOVALUXE by Sennel Promotion'}
                 referrerPolicy="no-referrer"
                 onError={e => handleImageError(e, DEFAULT_HERO_IMAGE)}

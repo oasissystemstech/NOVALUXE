@@ -111,11 +111,20 @@ export type Enquiry = {
 
 export type PromoFrequency = 'once_per_session' | 'once_per_day' | 'always';
 
+export type PromoDisplayMode = 'image' | 'video' | 'disabled';
+export type PromoDesktopBehavior = 'autoplay_muted' | 'click_to_play' | 'hide';
+export type PromoMobileBehavior = 'autoplay_muted' | 'click_to_play' | 'poster_fallback' | 'hide';
+
 export type PromoCampaignConfig = {
   enabled: boolean;
+  displayMode?: PromoDisplayMode;
   mediaType: 'video' | 'image';
   mediaUrl: string;
+  imageUrl?: string;
+  videoUrl?: string;
   posterUrl: string;
+  desktopBehavior?: PromoDesktopBehavior;
+  mobileBehavior?: PromoMobileBehavior;
   title: string;
   subtitle: string;
   ctaText: string;

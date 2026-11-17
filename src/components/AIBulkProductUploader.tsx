@@ -16,8 +16,8 @@ import {
 } from 'lucide-react';
 import { useSettings } from '../context/SettingsContext';
 import { useAuth } from '../context/AuthContext';
-import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { store } from '../lib/store';
+import { uploadMediaToSupabaseStorage } from '../lib/storageUpload';
 import { BulkUploadHistoryEntry, Product } from '../types';
 import { handleImageError } from '../lib/imageUtils';
 
@@ -236,28 +236,15 @@ export const AIBulkProductUploader: React.FC = () => {
   };
 
   const uploadImageToStorage = async (file: File, batchId: string): Promise<string> => {
-    if (supabase && isSupabaseConfigured) {
-      const sanitizedName = file.name
-        .toLowerCase()
-        .replace(/[^a-z0-9.]/g, '-')
-        .replace(/-+/g, '-');
-      const path = `products/bulk-${batchId}/${Date.now()}-${sanitizedName}`;
-      const { error } = await supabase.storage.from('product-images').upload(path, file, {
-        cacheControl: '3600',
-        upsert: true,
-        contentType: file.type || 'image/jpeg'
-      });
-
-      if (!error) {
-        const { data } = supabase.storage.from('product-images').getPublicUrl(path);
-        if (data?.publicUrl) return data.publicUrl;
-      } else {
-        console.warn('Supabase storage upload note during bulk batch:', error.message);
-      }
-    }
-    // Fallback compressed data URL when Supabase storage is offline
-    const payload = await prepareImagePayloadForAI(file);
-    return `data:${payload.mimeType};base64,${payload.base64}`;
+    const result = await uploadMediaToSupabaseStorage({
+      bucket: 'product-images',
+      folder: `products/bulk-${batchId}`,
+      file,
+      maxBytes: MAX_FILE_SIZE,
+      allowedMimeTypes: ALLOWED_MIME_TYPES,
+      allowedExtensions: ALLOWED_EXTENSIONS
+    });
+    return result.publicUrl;
   };
 
   const analyzeImageWithServer = async (
@@ -526,23 +513,27 @@ export const AIBulkProductUploader: React.FC = () => {
       draft.status !== 'queued' &&
       draft.status !== 'uploading' &&
       draft.status !== 'analyzing' &&
+      Boolean(draft.hostedImageUrl) &&
+      !draft.hostedImageUrl.startsWith('blob:') &&
+      !draft.hostedImageUrl.startsWith('data:') &&
       draft.name.trim().length > 0 &&
       !Number.isNaN(parsedPrice) &&
       parsedPrice > 0
     );
   };
 
-  const saveDraftsToStore = (targets: BulkProductDraft[]) => {
+  const saveDraftsToStore = async (targets: BulkProductDraft[]) => {
     const validTargets = targets.filter(isDraftValidForSave);
     if (validTargets.length === 0) {
       setBatchBanner({
         type: 'error',
-        text: 'No eligible items to save. Each product must have a Product Name and a Selling Price greater than 0.'
+        text: 'No eligible items to save. Each product must have a hosted Supabase Storage image, Product Name, and Selling Price greater than 0.'
       });
       return;
     }
 
     const savedIds = new Set<string>();
+    const failedErrors: string[] = [];
     const now = new Date().toISOString();
 
     for (const draft of validTargets) {
@@ -567,7 +558,7 @@ export const AIBulkProductUploader: React.FC = () => {
         isFeatured: draft.isFeatured,
         isNewArrival: draft.isNewArrival,
         isBestSeller: draft.isBestSeller,
-        images: [draft.hostedImageUrl || draft.previewUrl],
+        images: [draft.hostedImageUrl],
         brand: draft.brand.trim() || undefined,
         productType: draft.productType.trim() || undefined,
         sizeOrVolume: draft.sizeOrVolume.trim() || undefined,
@@ -588,8 +579,16 @@ export const AIBulkProductUploader: React.FC = () => {
         updatedAt: now
       };
 
-      store.saveProduct(newProduct);
-      savedIds.add(draft.localId);
+      try {
+        await store.saveProductAsync(newProduct);
+        savedIds.add(draft.localId);
+      } catch (err: any) {
+        const msg = err?.message || 'Failed to save product to Supabase.';
+        failedErrors.push(`${draft.name}: ${msg}`);
+        setDrafts(prev =>
+          prev.map(d => (d.localId === draft.localId ? { ...d, errorMessage: msg } : d))
+        );
+      }
     }
 
     refreshProducts();
@@ -598,7 +597,7 @@ export const AIBulkProductUploader: React.FC = () => {
       prev.map(d => (savedIds.has(d.localId) ? { ...d, status: 'saved', isExpanded: false } : d))
     );
 
-    if (currentHistoryId) {
+    if (currentHistoryId && savedIds.size > 0) {
       const entry = history.find(h => h.id === currentHistoryId);
       if (entry) {
         const nextSaved = entry.savedCount + savedIds.size;
@@ -612,10 +611,17 @@ export const AIBulkProductUploader: React.FC = () => {
       }
     }
 
-    setBatchBanner({
-      type: 'success',
-      text: `Saved ${savedIds.size} product${savedIds.size === 1 ? '' : 's'} to the NOVALUXE catalogue!`
-    });
+    if (failedErrors.length > 0) {
+      setBatchBanner({
+        type: 'error',
+        text: `Saved ${savedIds.size} product(s), but ${failedErrors.length} failed: ${failedErrors[0]}`
+      });
+    } else {
+      setBatchBanner({
+        type: 'success',
+        text: `Saved ${savedIds.size} product${savedIds.size === 1 ? '' : 's'} to Supabase & the live NOVALUXE catalogue!`
+      });
+    }
   };
 
   const handleApproveAllValid = () => {

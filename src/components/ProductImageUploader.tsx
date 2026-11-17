@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { handleImageError } from '../lib/imageUtils';
+import { uploadMediaToSupabaseStorage } from '../lib/storageUpload';
 
 interface ProductImageUploaderProps {
   imageUrl?: string;
@@ -24,6 +25,7 @@ interface ProductImageUploaderProps {
 
 const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5 MB
 const ALLOWED_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/jpg'];
+const ALLOWED_EXTENSIONS = ['jpg', 'jpeg', 'png', 'webp'];
 
 export const ProductImageUploader: React.FC<ProductImageUploaderProps> = ({
   imageUrl = '',
@@ -68,16 +70,14 @@ export const ProductImageUploader: React.FC<ProductImageUploaderProps> = ({
       return 'No file selected.';
     }
 
-    // Check MIME type and file extension
-    const extension = file.name.split('.').pop()?.toLowerCase();
-    const isExtensionAllowed = ['jpg', 'jpeg', 'png', 'webp'].includes(extension || '');
+    const extension = file.name.split('.').pop()?.toLowerCase() || '';
+    const isExtensionAllowed = ALLOWED_EXTENSIONS.includes(extension);
     const isMimeAllowed = ALLOWED_MIME_TYPES.includes(file.type);
 
     if (!isMimeAllowed && !isExtensionAllowed) {
       return 'Please select a valid JPG, PNG, or WEBP image.';
     }
 
-    // Check file size
     if (file.size > MAX_FILE_SIZE) {
       const sizeMB = (file.size / (1024 * 1024)).toFixed(1);
       return `Image size must not exceed 5 MB. Selected file is ${sizeMB} MB.`;
@@ -96,9 +96,8 @@ export const ProductImageUploader: React.FC<ProductImageUploaderProps> = ({
     setError(null);
     setSuccessMessage(null);
     setIsUploading(true);
-    setUploadProgress(10);
+    setUploadProgress(15);
 
-    // Progress simulation interval
     const progressTimer = setInterval(() => {
       setUploadProgress(prev => {
         if (prev < 85) return prev + Math.floor(Math.random() * 15) + 5;
@@ -111,74 +110,32 @@ export const ProductImageUploader: React.FC<ProductImageUploaderProps> = ({
         throw new Error('Supabase client is not connected. Please check your Supabase configuration.');
       }
 
-      // Generate sanitized unique storage path: products/{productId}/{timestamp}-{filename}
-      const sanitizedName = file.name
-        .toLowerCase()
-        .replace(/[^a-z0-9.]/g, '-')
-        .replace(/-+/g, '-');
-      const timestamp = Date.now();
-      const storagePath = `products/${productId}/${timestamp}-${sanitizedName}`;
-
-      // Upload to Supabase Storage bucket 'product-images'
-      const { error: uploadError } = await supabase.storage
-        .from('product-images')
-        .upload(storagePath, file, {
-          cacheControl: '3600',
-          upsert: true,
-          contentType: file.type || 'image/jpeg'
-        });
-
-      if (uploadError) {
-        clearInterval(progressTimer);
-        // Informative guidance for bucket setup
-        if (
-          uploadError.message.toLowerCase().includes('bucket not found') ||
-          uploadError.message.toLowerCase().includes('not found')
-        ) {
-          throw new Error(
-            `Supabase Storage bucket 'product-images' was not found. Please run the bucket setup script in the Supabase SQL tab.`
-          );
-        }
-        if (
-          uploadError.message.toLowerCase().includes('row-level security') ||
-          uploadError.message.toLowerCase().includes('violates') ||
-          uploadError.message.toLowerCase().includes('unauthorized')
-        ) {
-          throw new Error(
-            `Storage permission denied: Sign in with your Supabase Admin account and ensure your User UUID is registered in public.admin_profiles (see Supabase SQL tab).`
-          );
-        }
-        throw new Error(uploadError.message || 'Failed to upload image to Supabase Storage.');
-      }
-
-      // Retrieve public URL from Supabase Storage
-      const { data: publicUrlData } = supabase.storage
-        .from('product-images')
-        .getPublicUrl(storagePath);
-
-      if (!publicUrlData || !publicUrlData.publicUrl) {
-        throw new Error('Could not retrieve public URL for uploaded image.');
-      }
+      const result = await uploadMediaToSupabaseStorage({
+        bucket: 'product-images',
+        folder: `products/${productId || 'new-product'}`,
+        file,
+        maxBytes: MAX_FILE_SIZE,
+        allowedMimeTypes: ALLOWED_MIME_TYPES,
+        allowedExtensions: ALLOWED_EXTENSIONS
+      });
 
       clearInterval(progressTimer);
       setUploadProgress(100);
 
-      const finalUrl = publicUrlData.publicUrl;
-      onImageChange(finalUrl);
-      setManualUrlInput(finalUrl);
-      setSuccessMessage('Image successfully uploaded to Supabase Storage!');
+      onImageChange(result.publicUrl);
+      setManualUrlInput(result.publicUrl);
+      setSuccessMessage('Image uploaded to Supabase Storage! Click "Save Product" to publish.');
 
-      // Reset progress indicator after a brief delay
       setTimeout(() => {
         setIsUploading(false);
         setUploadProgress(0);
-      }, 600);
+      }, 450);
     } catch (err: any) {
       clearInterval(progressTimer);
       setIsUploading(false);
       setUploadProgress(0);
-      console.error('Upload error:', err);
-      setError(err?.message || 'An unexpected error occurred during image upload.');
+      console.error('Product image upload error:', err);
+      setError(err?.message || 'Unable to upload product image. Existing published image was preserved.');
     }
   };
 

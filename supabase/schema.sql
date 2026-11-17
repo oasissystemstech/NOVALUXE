@@ -120,11 +120,13 @@ create table if not exists public.orders (
   payment_status text default 'Unpaid' check (payment_status in ('Unpaid', 'Pending Verification', 'Paid')),
   customer_notes text,
   client_request_id text,
+  request_fingerprint text,
   created_at timestamp with time zone default timezone('utc'::text, now()) not null,
   updated_at timestamp with time zone default timezone('utc'::text, now()) not null
 );
 
 alter table public.orders add column if not exists client_request_id text;
+alter table public.orders add column if not exists request_fingerprint text;
 
 drop trigger if exists set_orders_updated_at on public.orders;
 create trigger set_orders_updated_at
@@ -218,7 +220,33 @@ begin
   end if;
 end $$;
 
--- 15. INDEXES FOR HIGH-PERFORMANCE QUERIES
+-- 15. INTERNAL CHECKOUT RATE-LIMIT TABLE (ZERO PUBLIC ACCESS)
+create table if not exists public.checkout_rate_limits (
+  bucket_key text primary key,
+  scope text not null default 'ip',
+  attempt_count integer not null default 0,
+  window_started_at timestamp with time zone default timezone('utc'::text, now()) not null,
+  locked_until timestamp with time zone
+);
+
+-- 15B. INTERNAL ADMIN LOGIN RATE-LIMIT TABLE (ZERO PUBLIC ACCESS)
+create table if not exists public.admin_login_attempts (
+  bucket_key text primary key,
+  scope text not null default 'account',
+  failed_count integer not null default 0,
+  window_started_at timestamp with time zone default timezone('utc'::text, now()) not null,
+  next_allowed_at timestamp with time zone,
+  locked_until timestamp with time zone
+);
+
+-- 15C. APPROVED EXTERNAL MEDIA HOST ALLOWLIST (SUPER_ADMIN MANAGED)
+create table if not exists public.trusted_media_hosts (
+  hostname text primary key,
+  description text,
+  created_at timestamp with time zone default timezone('utc'::text, now()) not null
+);
+
+-- 16. INDEXES FOR HIGH-PERFORMANCE QUERIES
 create index if not exists idx_products_category on public.products(category_id);
 create index if not exists idx_products_slug on public.products(slug);
 create index if not exists idx_product_images_product on public.product_images(product_id);
@@ -230,12 +258,21 @@ create index if not exists idx_order_items_order on public.order_items(order_id)
 create index if not exists idx_admin_profiles_user_id on public.admin_profiles(user_id);
 create index if not exists idx_bulk_upload_history_created_at on public.bulk_upload_history(created_at desc);
 create index if not exists idx_order_lookup_attempts_window on public.order_lookup_attempts(window_started_at);
+create index if not exists idx_checkout_rate_limits_window on public.checkout_rate_limits(window_started_at);
+create index if not exists idx_admin_login_attempts_window on public.admin_login_attempts(window_started_at);
 
--- 16. REMOVE INSECURE LEGACY CHECKOUT HELPER & OLD FUNCTION OVERLOADS
+-- 17. REMOVE INSECURE LEGACY CHECKOUT HELPER & OLD FUNCTION OVERLOADS
 drop function if exists public.order_is_pending_checkout(uuid);
+drop function if exists public.is_approved_novaluxe_media_url(text, text);
+drop function if exists public.admin_login_rate_limit(text, text, text);
 drop function if exists public.lookup_order_by_reference(text, text);
 drop function if exists public.lookup_order_by_reference(text, text, text);
 drop function if exists public.create_checkout_order(text, text, text, text, text, text, text, jsonb, text);
+drop function if exists public.create_checkout_order(text, text, text, text, text, text, text, jsonb, text, text);
+drop function if exists public.save_product_with_images(
+  uuid, text, text, text, numeric, text, uuid, text, text, integer,
+  boolean, boolean, boolean, boolean, text, text, text, text, jsonb, jsonb, jsonb, jsonb
+);
 
 -- 17. AUTHORIZATION, TRANSACTIONAL CHECKOUT & SECURE ORDER LOOKUP FUNCTIONS
 -- Only authenticated Supabase users listed in public.admin_profiles with role 'admin' or 'super_admin' are authorized.
@@ -269,6 +306,316 @@ as $$
   );
 $$;
 
+create or replace function public.is_approved_novaluxe_media_url(
+  p_url text,
+  p_kind text default 'product'
+)
+returns boolean
+language plpgsql
+stable
+security definer
+set search_path = public
+as $$
+declare
+  v_url text := trim(coalesce(p_url, ''));
+  v_lower text := lower(v_url);
+  v_kind text := lower(trim(coalesce(p_kind, 'product')));
+  v_host text;
+  v_path text;
+  v_ext_ok boolean;
+begin
+  if v_url = '' or length(v_url) > 2048 then
+    return false;
+  end if;
+
+  if v_lower like 'blob:%'
+     or v_lower like 'data:%'
+     or v_lower like 'javascript:%'
+     or v_lower like 'vbscript:%'
+     or v_lower like 'file:%'
+     or position('..' in v_url) > 0
+     or position('\' in v_url) > 0
+     or v_url ~ '\s' then
+    return false;
+  end if;
+
+  if left(v_url, 1) = '/' then
+    if v_kind = 'promo_video' then
+      return false;
+    end if;
+    return v_url ~ '^/images/(?:(?:products|categories|hero|ceo)/)?[a-zA-Z0-9_-]+\.(?:jpg|jpeg|png|webp)$';
+  end if;
+
+  if v_lower !~ '^https://[a-z0-9.-]+(?:/|$)' then
+    return false;
+  end if;
+
+  v_host := lower((regexp_match(v_url, '^https://([^/:?#]+)'))[1]);
+  v_path := coalesce((regexp_match(v_url, '^https://[^/?#]+(/[^?#]*)'))[1], '');
+
+  if v_kind = 'promo_video' then
+    v_ext_ok := v_path ~* '\.(?:mp4|m4v|webm|mov)$';
+  else
+    v_ext_ok := v_path ~* '\.(?:jpg|jpeg|png|webp)$';
+  end if;
+
+  if not v_ext_ok then
+    return false;
+  end if;
+
+  if v_host = 'srclselecvagahijkonu.supabase.co' then
+    if v_kind = 'product' then
+      return v_path like '/storage/v1/object/public/product-images/%';
+    elsif v_kind = 'category' then
+      return v_path like '/storage/v1/object/public/category-images/%'
+          or v_path like '/storage/v1/object/public/promotional-assets/%';
+    else
+      return v_path like '/storage/v1/object/public/promotional-assets/%';
+    end if;
+  end if;
+
+  return exists (
+    select 1
+    from public.trusted_media_hosts tmh
+    where lower(tmh.hostname) = v_host
+  );
+end;
+$$;
+
+create or replace function public.admin_login_rate_limit(
+  p_action text,
+  p_account_key text default null,
+  p_ip_hash text default null
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_action text := lower(trim(coalesce(p_action, '')));
+  v_now timestamp with time zone := timezone('utc'::text, now());
+  v_acct_bucket text := case
+    when nullif(trim(coalesce(p_account_key, '')), '') is not null
+      then 'acct:' || trim(p_account_key)
+    else null
+  end;
+  v_ip_bucket text := case
+    when nullif(trim(coalesce(p_ip_hash, '')), '') is not null
+      then 'ip:' || trim(p_ip_hash)
+    else null
+  end;
+  v_row public.admin_login_attempts%rowtype;
+  v_retry_sec integer := 0;
+  v_max_fail integer := 0;
+begin
+  if coalesce(auth.role(), '') <> 'service_role' then
+    raise exception 'Forbidden: admin_login_rate_limit is restricted to service_role.' using errcode = '42501';
+  end if;
+
+  if v_action not in ('check', 'fail', 'reset') then
+    raise exception 'Invalid admin_login_rate_limit action.' using errcode = '22023';
+  end if;
+
+  delete from public.admin_login_attempts
+  where bucket_key in (
+    select ala.bucket_key
+    from public.admin_login_attempts ala
+    where ala.window_started_at < v_now - interval '24 hours'
+      and (ala.locked_until is null or ala.locked_until < v_now)
+    limit 100
+  );
+
+  if v_action = 'reset' then
+    if v_acct_bucket is not null then
+      perform pg_advisory_xact_lock(7103, hashtext(v_acct_bucket));
+      delete from public.admin_login_attempts where bucket_key = v_acct_bucket;
+    end if;
+    if v_ip_bucket is not null then
+      perform pg_advisory_xact_lock(7103, hashtext(v_ip_bucket));
+      delete from public.admin_login_attempts where bucket_key = v_ip_bucket;
+    end if;
+    return jsonb_build_object('allowed', true, 'rateLimited', false, 'retryAfterSec', 0, 'failedCount', 0);
+  end if;
+
+  if v_action = 'check' then
+    if v_acct_bucket is not null then
+      perform pg_advisory_xact_lock(7103, hashtext(v_acct_bucket));
+      select * into v_row from public.admin_login_attempts where bucket_key = v_acct_bucket;
+      if found then
+        v_max_fail := greatest(v_max_fail, v_row.failed_count);
+        if v_row.locked_until is not null and v_row.locked_until > v_now then
+          v_retry_sec := greatest(v_retry_sec, ceil(extract(epoch from (v_row.locked_until - v_now)))::integer);
+        elsif v_row.next_allowed_at is not null and v_row.next_allowed_at > v_now then
+          v_retry_sec := greatest(v_retry_sec, ceil(extract(epoch from (v_row.next_allowed_at - v_now)))::integer);
+        end if;
+      end if;
+    end if;
+
+    if v_ip_bucket is not null then
+      perform pg_advisory_xact_lock(7103, hashtext(v_ip_bucket));
+      select * into v_row from public.admin_login_attempts where bucket_key = v_ip_bucket;
+      if found then
+        v_max_fail := greatest(v_max_fail, v_row.failed_count);
+        if v_row.locked_until is not null and v_row.locked_until > v_now then
+          v_retry_sec := greatest(v_retry_sec, ceil(extract(epoch from (v_row.locked_until - v_now)))::integer);
+        elsif v_row.next_allowed_at is not null and v_row.next_allowed_at > v_now then
+          v_retry_sec := greatest(v_retry_sec, ceil(extract(epoch from (v_row.next_allowed_at - v_now)))::integer);
+        end if;
+      end if;
+    end if;
+
+    return jsonb_build_object(
+      'allowed', v_retry_sec = 0,
+      'rateLimited', v_retry_sec > 0,
+      'retryAfterSec', v_retry_sec,
+      'failedCount', v_max_fail
+    );
+  end if;
+
+  if v_acct_bucket is not null then
+    perform pg_advisory_xact_lock(7103, hashtext(v_acct_bucket));
+    insert into public.admin_login_attempts (bucket_key, scope, failed_count, window_started_at, next_allowed_at, locked_until)
+    values (v_acct_bucket, 'account', 1, v_now, null, null)
+    on conflict (bucket_key) do update
+    set
+      scope = 'account',
+      failed_count = case
+        when public.admin_login_attempts.locked_until is not null and public.admin_login_attempts.locked_until > v_now
+          then public.admin_login_attempts.failed_count
+        when public.admin_login_attempts.window_started_at < v_now - interval '15 minutes'
+          or (public.admin_login_attempts.locked_until is not null and public.admin_login_attempts.locked_until <= v_now)
+          then 1
+        else public.admin_login_attempts.failed_count + 1
+      end,
+      window_started_at = case
+        when public.admin_login_attempts.locked_until is not null and public.admin_login_attempts.locked_until > v_now
+          then public.admin_login_attempts.window_started_at
+        when public.admin_login_attempts.window_started_at < v_now - interval '15 minutes'
+          or (public.admin_login_attempts.locked_until is not null and public.admin_login_attempts.locked_until <= v_now)
+          then v_now
+        else public.admin_login_attempts.window_started_at
+      end,
+      next_allowed_at = case
+        when public.admin_login_attempts.locked_until is not null and public.admin_login_attempts.locked_until > v_now
+          then public.admin_login_attempts.next_allowed_at
+        when (
+          case
+            when public.admin_login_attempts.window_started_at < v_now - interval '15 minutes'
+              or (public.admin_login_attempts.locked_until is not null and public.admin_login_attempts.locked_until <= v_now)
+              then 1
+            else public.admin_login_attempts.failed_count + 1
+          end
+        ) = 3 then v_now + interval '15 seconds'
+        when (
+          case
+            when public.admin_login_attempts.window_started_at < v_now - interval '15 minutes'
+              or (public.admin_login_attempts.locked_until is not null and public.admin_login_attempts.locked_until <= v_now)
+              then 1
+            else public.admin_login_attempts.failed_count + 1
+          end
+        ) = 4 then v_now + interval '30 seconds'
+        else null
+      end,
+      locked_until = case
+        when public.admin_login_attempts.locked_until is not null and public.admin_login_attempts.locked_until > v_now
+          then public.admin_login_attempts.locked_until
+        when (
+          case
+            when public.admin_login_attempts.window_started_at < v_now - interval '15 minutes'
+              or (public.admin_login_attempts.locked_until is not null and public.admin_login_attempts.locked_until <= v_now)
+              then 1
+            else public.admin_login_attempts.failed_count + 1
+          end
+        ) >= 5 then v_now + interval '15 minutes'
+        else null
+      end
+    returning * into v_row;
+
+    v_max_fail := greatest(v_max_fail, v_row.failed_count);
+    if v_row.locked_until is not null and v_row.locked_until > v_now then
+      v_retry_sec := greatest(v_retry_sec, ceil(extract(epoch from (v_row.locked_until - v_now)))::integer);
+    elsif v_row.next_allowed_at is not null and v_row.next_allowed_at > v_now then
+      v_retry_sec := greatest(v_retry_sec, ceil(extract(epoch from (v_row.next_allowed_at - v_now)))::integer);
+    end if;
+  end if;
+
+  if v_ip_bucket is not null then
+    perform pg_advisory_xact_lock(7103, hashtext(v_ip_bucket));
+    insert into public.admin_login_attempts (bucket_key, scope, failed_count, window_started_at, next_allowed_at, locked_until)
+    values (v_ip_bucket, 'ip', 1, v_now, null, null)
+    on conflict (bucket_key) do update
+    set
+      scope = 'ip',
+      failed_count = case
+        when public.admin_login_attempts.locked_until is not null and public.admin_login_attempts.locked_until > v_now
+          then public.admin_login_attempts.failed_count
+        when public.admin_login_attempts.window_started_at < v_now - interval '15 minutes'
+          or (public.admin_login_attempts.locked_until is not null and public.admin_login_attempts.locked_until <= v_now)
+          then 1
+        else public.admin_login_attempts.failed_count + 1
+      end,
+      window_started_at = case
+        when public.admin_login_attempts.locked_until is not null and public.admin_login_attempts.locked_until > v_now
+          then public.admin_login_attempts.window_started_at
+        when public.admin_login_attempts.window_started_at < v_now - interval '15 minutes'
+          or (public.admin_login_attempts.locked_until is not null and public.admin_login_attempts.locked_until <= v_now)
+          then v_now
+        else public.admin_login_attempts.window_started_at
+      end,
+      next_allowed_at = case
+        when public.admin_login_attempts.locked_until is not null and public.admin_login_attempts.locked_until > v_now
+          then public.admin_login_attempts.next_allowed_at
+        when (
+          case
+            when public.admin_login_attempts.window_started_at < v_now - interval '15 minutes'
+              or (public.admin_login_attempts.locked_until is not null and public.admin_login_attempts.locked_until <= v_now)
+              then 1
+            else public.admin_login_attempts.failed_count + 1
+          end
+        ) = 5 then v_now + interval '15 seconds'
+        when (
+          case
+            when public.admin_login_attempts.window_started_at < v_now - interval '15 minutes'
+              or (public.admin_login_attempts.locked_until is not null and public.admin_login_attempts.locked_until <= v_now)
+              then 1
+            else public.admin_login_attempts.failed_count + 1
+          end
+        ) in (6, 7) then v_now + interval '30 seconds'
+        else null
+      end,
+      locked_until = case
+        when public.admin_login_attempts.locked_until is not null and public.admin_login_attempts.locked_until > v_now
+          then public.admin_login_attempts.locked_until
+        when (
+          case
+            when public.admin_login_attempts.window_started_at < v_now - interval '15 minutes'
+              or (public.admin_login_attempts.locked_until is not null and public.admin_login_attempts.locked_until <= v_now)
+              then 1
+            else public.admin_login_attempts.failed_count + 1
+          end
+        ) >= 8 then v_now + interval '15 minutes'
+        else null
+      end
+    returning * into v_row;
+
+    v_max_fail := greatest(v_max_fail, v_row.failed_count);
+    if v_row.locked_until is not null and v_row.locked_until > v_now then
+      v_retry_sec := greatest(v_retry_sec, ceil(extract(epoch from (v_row.locked_until - v_now)))::integer);
+    elsif v_row.next_allowed_at is not null and v_row.next_allowed_at > v_now then
+      v_retry_sec := greatest(v_retry_sec, ceil(extract(epoch from (v_row.next_allowed_at - v_now)))::integer);
+    end if;
+  end if;
+
+  return jsonb_build_object(
+    'allowed', v_retry_sec = 0,
+    'rateLimited', v_retry_sec > 0,
+    'retryAfterSec', v_retry_sec,
+    'failedCount', v_max_fail
+  );
+end;
+$$;
+
 -- Secure cross-instance customer order lookup:
 --   1. Requires exact order_reference and exact normalized full customer phone digits (no partial fallback).
 --   2. Durable multi-tier rate limiting in public.order_lookup_attempts across separate serverless instances:
@@ -298,8 +645,7 @@ declare
   v_ip_bucket text;
   v_ipref_bucket text;
   v_ref_bucket text;
-  v_bucket record;
-  v_ip_count integer;
+  v_bucket public.order_lookup_attempts%rowtype;
   v_order record;
   v_order_phone_digits text;
   v_items jsonb;
@@ -335,11 +681,60 @@ begin
   v_ipref_bucket := 'ipref:' || v_ip_hash || ':' || v_ref;
   v_ref_bucket := 'ref:' || v_ref;
 
-  -- 1. Check & increment per-IP global sliding window (12 requests / 5 min)
+  -- 1. Atomic per-IP global sliding window (12 requests / 5 min) under advisory lock
+  perform pg_advisory_xact_lock(7102, hashtext(v_ip_bucket));
+
+  insert into public.order_lookup_attempts (bucket_key, scope, failed_count, window_started_at, locked_until)
+  values (v_ip_bucket, 'ip', 1, v_now, null)
+  on conflict (bucket_key) do update
+  set
+    scope = 'ip',
+    failed_count = case
+      when public.order_lookup_attempts.locked_until is not null
+           and public.order_lookup_attempts.locked_until > v_now
+        then public.order_lookup_attempts.failed_count
+      when public.order_lookup_attempts.window_started_at < v_now - interval '5 minutes'
+           or (public.order_lookup_attempts.locked_until is not null and public.order_lookup_attempts.locked_until <= v_now)
+        then 1
+      else public.order_lookup_attempts.failed_count + 1
+    end,
+    window_started_at = case
+      when public.order_lookup_attempts.locked_until is not null
+           and public.order_lookup_attempts.locked_until > v_now
+        then public.order_lookup_attempts.window_started_at
+      when public.order_lookup_attempts.window_started_at < v_now - interval '5 minutes'
+           or (public.order_lookup_attempts.locked_until is not null and public.order_lookup_attempts.locked_until <= v_now)
+        then v_now
+      else public.order_lookup_attempts.window_started_at
+    end,
+    locked_until = case
+      when public.order_lookup_attempts.locked_until is not null
+           and public.order_lookup_attempts.locked_until > v_now
+        then public.order_lookup_attempts.locked_until
+      when (
+        case
+          when public.order_lookup_attempts.window_started_at < v_now - interval '5 minutes'
+               or (public.order_lookup_attempts.locked_until is not null and public.order_lookup_attempts.locked_until <= v_now)
+            then 1
+          else public.order_lookup_attempts.failed_count + 1
+        end
+      ) > 12 then v_now + interval '5 minutes'
+      else null
+    end
+  returning * into v_bucket;
+
+  if v_bucket.locked_until is not null and v_bucket.locked_until > v_now then
+    return jsonb_build_object(
+      'rateLimited', true,
+      'retryAfterSec', greatest(1, ceil(extract(epoch from (v_bucket.locked_until - v_now)))::integer)
+    );
+  end if;
+
+  -- 2. Check per-(IP + order_reference) lockout (5 failures / 15 min) under advisory lock
+  perform pg_advisory_xact_lock(7102, hashtext(v_ipref_bucket));
   select * into v_bucket
   from public.order_lookup_attempts
-  where bucket_key = v_ip_bucket
-  for update;
+  where bucket_key = v_ipref_bucket;
 
   if found and v_bucket.locked_until is not null and v_bucket.locked_until > v_now then
     return jsonb_build_object(
@@ -348,47 +743,11 @@ begin
     );
   end if;
 
-  if not found or v_bucket.window_started_at < v_now - interval '5 minutes' then
-    v_ip_count := 1;
-    insert into public.order_lookup_attempts (bucket_key, scope, failed_count, window_started_at, locked_until)
-    values (v_ip_bucket, 'ip', 1, v_now, null)
-    on conflict (bucket_key) do update
-    set scope = 'ip',
-        failed_count = 1,
-        window_started_at = v_now,
-        locked_until = null;
-  else
-    v_ip_count := v_bucket.failed_count + 1;
-    if v_ip_count > 12 then
-      update public.order_lookup_attempts
-      set locked_until = v_now + interval '5 minutes'
-      where bucket_key = v_ip_bucket;
-      return jsonb_build_object('rateLimited', true, 'retryAfterSec', 300);
-    end if;
-
-    update public.order_lookup_attempts
-    set failed_count = v_ip_count
-    where bucket_key = v_ip_bucket;
-  end if;
-
-  -- 2. Check per-(IP + order_reference) lockout (5 failures / 15 min)
+  -- 3. Check short bounded per-reference cooldown under advisory lock
+  perform pg_advisory_xact_lock(7102, hashtext(v_ref_bucket));
   select * into v_bucket
   from public.order_lookup_attempts
-  where bucket_key = v_ipref_bucket
-  for update;
-
-  if found and v_bucket.locked_until is not null and v_bucket.locked_until > v_now then
-    return jsonb_build_object(
-      'rateLimited', true,
-      'retryAfterSec', greatest(1, ceil(extract(epoch from (v_bucket.locked_until - v_now)))::integer)
-    );
-  end if;
-
-  -- 3. Check short bounded per-reference cooldown (only active during distributed multi-IP spikes; never extended while locked)
-  select * into v_bucket
-  from public.order_lookup_attempts
-  where bucket_key = v_ref_bucket
-  for update;
+  where bucket_key = v_ref_bucket;
 
   if found and v_bucket.locked_until is not null and v_bucket.locked_until > v_now then
     return jsonb_build_object(
@@ -516,9 +875,198 @@ begin
 end;
 $$;
 
+-- Transactional product + product_images save RPC (atomic rollback on any error)
+create or replace function public.save_product_with_images(
+  p_id uuid default null,
+  p_name text default null,
+  p_slug text default null,
+  p_description text default null,
+  p_price numeric(10, 2) default null,
+  p_currency text default 'USD',
+  p_category_id uuid default null,
+  p_category_slug text default null,
+  p_sku text default '',
+  p_stock_quantity integer default 0,
+  p_is_available boolean default true,
+  p_is_featured boolean default false,
+  p_is_new_arrival boolean default false,
+  p_is_best_seller boolean default false,
+  p_brand text default null,
+  p_product_type text default null,
+  p_size_or_volume text default null,
+  p_specifications text default null,
+  p_key_ingredients jsonb default '[]'::jsonb,
+  p_features jsonb default '[]'::jsonb,
+  p_tags jsonb default '[]'::jsonb,
+  p_images jsonb default '[]'::jsonb
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_name text := trim(coalesce(p_name, ''));
+  v_slug text := lower(trim(coalesce(p_slug, '')));
+  v_desc text := trim(coalesce(p_description, ''));
+  v_currency text := coalesce(nullif(trim(coalesce(p_currency, '')), ''), 'USD');
+  v_sku text := trim(coalesce(p_sku, ''));
+  v_brand text := nullif(trim(coalesce(p_brand, '')), '');
+  v_product_type text := nullif(trim(coalesce(p_product_type, '')), '');
+  v_size_or_volume text := nullif(trim(coalesce(p_size_or_volume, '')), '');
+  v_specifications text := nullif(trim(coalesce(p_specifications, '')), '');
+  v_category_id uuid := null;
+  v_category_slug text := lower(trim(coalesce(p_category_slug, '')));
+  v_key_ingredients jsonb := case when p_key_ingredients is not null and jsonb_typeof(p_key_ingredients) = 'array' then p_key_ingredients else '[]'::jsonb end;
+  v_features jsonb := case when p_features is not null and jsonb_typeof(p_features) = 'array' then p_features else '[]'::jsonb end;
+  v_tags jsonb := case when p_tags is not null and jsonb_typeof(p_tags) = 'array' then p_tags else '[]'::jsonb end;
+  v_clean_images jsonb := '[]'::jsonb;
+  v_img text;
+  v_img_lower text;
+  v_saved public.products%rowtype;
+begin
+  if coalesce(auth.role(), '') <> 'service_role' and not public.is_novaluxe_admin() then
+    raise exception 'Unauthorized administrative product write.' using errcode = '42501';
+  end if;
+
+  if length(v_name) < 2 or length(v_name) > 200 then
+    raise exception 'Product name must be between 2 and 200 characters.' using errcode = '22023';
+  end if;
+
+  if v_slug !~ '^[a-z0-9]+(?:-[a-z0-9]+)*$' or length(v_slug) > 160 then
+    raise exception 'Product slug must contain lowercase letters, numbers, and hyphens only.' using errcode = '22023';
+  end if;
+
+  if length(v_desc) < 2 or length(v_desc) > 5000 then
+    raise exception 'Product description must be between 2 and 5000 characters.' using errcode = '22023';
+  end if;
+
+  if p_price is null or p_price < 0 or p_price > 1000000 then
+    raise exception 'Product price must be between 0 and 1,000,000.' using errcode = '22023';
+  end if;
+
+  if p_stock_quantity is null or p_stock_quantity < 0 or p_stock_quantity > 1000000 then
+    raise exception 'Product stock_quantity must be between 0 and 1,000,000.' using errcode = '22023';
+  end if;
+
+  if p_images is null or jsonb_typeof(p_images) <> 'array' or jsonb_array_length(p_images) = 0 or jsonb_array_length(p_images) > 20 then
+    raise exception 'Product must include between 1 and 20 valid images.' using errcode = '22023';
+  end if;
+
+  for v_img in select value from jsonb_array_elements_text(p_images)
+  loop
+    v_img := trim(coalesce(v_img, ''));
+    if not public.is_approved_novaluxe_media_url(v_img, 'product') then
+      raise exception 'Product image URL must be an approved NOVALUXE asset or Supabase Storage URL.' using errcode = '22023';
+    end if;
+    v_clean_images := v_clean_images || jsonb_build_array(v_img);
+  end loop;
+
+  if p_category_id is not null then
+    select id into v_category_id from public.categories where id = p_category_id;
+  end if;
+  if v_category_id is null and v_category_slug <> '' then
+    select id into v_category_id from public.categories where slug = v_category_slug;
+  end if;
+  if v_category_id is null then
+    raise exception 'Valid category reference is required to save a product.' using errcode = '22023';
+  end if;
+
+  if p_id is not null then
+    insert into public.products (
+      id, name, slug, description, price, currency, category_id, sku, stock_quantity,
+      is_available, is_featured, is_new_arrival, is_best_seller,
+      brand, product_type, size_or_volume, specifications,
+      key_ingredients, features, tags
+    ) values (
+      p_id, v_name, v_slug, v_desc, round(p_price, 2), v_currency, v_category_id, v_sku, p_stock_quantity,
+      coalesce(p_is_available, true), coalesce(p_is_featured, false), coalesce(p_is_new_arrival, false), coalesce(p_is_best_seller, false),
+      v_brand, v_product_type, v_size_or_volume, v_specifications,
+      v_key_ingredients, v_features, v_tags
+    )
+    on conflict (id) do update set
+      name = excluded.name,
+      slug = excluded.slug,
+      description = excluded.description,
+      price = excluded.price,
+      currency = excluded.currency,
+      category_id = excluded.category_id,
+      sku = excluded.sku,
+      stock_quantity = excluded.stock_quantity,
+      is_available = excluded.is_available,
+      is_featured = excluded.is_featured,
+      is_new_arrival = excluded.is_new_arrival,
+      is_best_seller = excluded.is_best_seller,
+      brand = excluded.brand,
+      product_type = excluded.product_type,
+      size_or_volume = excluded.size_or_volume,
+      specifications = excluded.specifications,
+      key_ingredients = excluded.key_ingredients,
+      features = excluded.features,
+      tags = excluded.tags
+    returning * into v_saved;
+  else
+    insert into public.products (
+      name, slug, description, price, currency, category_id, sku, stock_quantity,
+      is_available, is_featured, is_new_arrival, is_best_seller,
+      brand, product_type, size_or_volume, specifications,
+      key_ingredients, features, tags
+    ) values (
+      v_name, v_slug, v_desc, round(p_price, 2), v_currency, v_category_id, v_sku, p_stock_quantity,
+      coalesce(p_is_available, true), coalesce(p_is_featured, false), coalesce(p_is_new_arrival, false), coalesce(p_is_best_seller, false),
+      v_brand, v_product_type, v_size_or_volume, v_specifications,
+      v_key_ingredients, v_features, v_tags
+    )
+    on conflict (slug) do update set
+      name = excluded.name,
+      description = excluded.description,
+      price = excluded.price,
+      currency = excluded.currency,
+      category_id = excluded.category_id,
+      sku = excluded.sku,
+      stock_quantity = excluded.stock_quantity,
+      is_available = excluded.is_available,
+      is_featured = excluded.is_featured,
+      is_new_arrival = excluded.is_new_arrival,
+      is_best_seller = excluded.is_best_seller,
+      brand = excluded.brand,
+      product_type = excluded.product_type,
+      size_or_volume = excluded.size_or_volume,
+      specifications = excluded.specifications,
+      key_ingredients = excluded.key_ingredients,
+      features = excluded.features,
+      tags = excluded.tags
+    returning * into v_saved;
+  end if;
+
+  delete from public.product_images where product_id = v_saved.id;
+
+  insert into public.product_images (product_id, image_url, alt_text, display_order)
+  select
+    v_saved.id,
+    elem.val,
+    v_saved.name,
+    (elem.ord - 1)::integer
+  from jsonb_array_elements_text(v_clean_images) with ordinality as elem(val, ord);
+
+  return jsonb_build_object(
+    'id', v_saved.id,
+    'category_id', v_saved.category_id,
+    'name', v_saved.name,
+    'slug', v_saved.slug,
+    'price', v_saved.price,
+    'stock_quantity', v_saved.stock_quantity,
+    'created_at', v_saved.created_at,
+    'updated_at', v_saved.updated_at,
+    'images', v_clean_images
+  );
+end;
+$$;
+
 -- Atomic server-authoritative transactional checkout RPC:
 --   * Requires mandatory p_client_request_id and serializes concurrent retries with pg_advisory_xact_lock.
---   * Legitimate idempotent retry returns the original committed order without deducting stock again.
+--   * Legitimate idempotent retry returns the original committed order without deducting stock or consuming rate-limit budget.
+--   * Enforces durable DB-level rate limiting per phone, per IP, and for direct anon calls.
 --   * Ignores all client-submitted prices, totals, delivery fees, and statuses.
 --   * Requires variant selection whenever product_variants has rows for the product, validates variant against product_id,
 --     and deducts both product_variants.stock_quantity and products.stock_quantity safely with >= check under FOR UPDATE lock.
@@ -531,7 +1079,8 @@ create or replace function public.create_checkout_order(
   p_delivery_method text default 'Delivery',
   p_customer_notes text default null,
   p_items jsonb default '[]'::jsonb,
-  p_client_request_id text default null
+  p_client_request_id text default null,
+  p_client_ip text default null
 )
 returns jsonb
 language plpgsql
@@ -546,6 +1095,10 @@ declare
   v_method text := trim(coalesce(p_delivery_method, 'Delivery'));
   v_notes text := nullif(trim(coalesce(p_customer_notes, '')), '');
   v_req_id text := nullif(trim(coalesce(p_client_request_id, '')), '');
+  v_norm_loc text;
+  v_norm_addr text;
+  v_norm_items jsonb;
+  v_req_fingerprint text;
   v_location text;
   v_address text;
   v_config jsonb;
@@ -571,11 +1124,19 @@ declare
   v_validated_items jsonb := '[]'::jsonb;
   v_existing_order record;
   v_existing_items jsonb;
+  v_legacy_item_sum integer := 0;
+  v_incoming_item_sum integer := 0;
   v_customer_id uuid;
   v_order_id uuid;
   v_order_ref text;
   v_persisted_items jsonb;
   v_now timestamp with time zone := timezone('utc'::text, now());
+  v_hdr_ip text := '';
+  v_ip_source text;
+  v_ip_bucket text;
+  v_phone_bucket text;
+  v_anon_bucket text;
+  v_rl public.checkout_rate_limits%rowtype;
 begin
   -- Validate mandatory request idempotency key and customer parameters
   if v_req_id is null or length(v_req_id) < 8 or length(v_req_id) > 128 then
@@ -602,6 +1163,64 @@ begin
     raise exception 'Order exceeds maximum permitted line items (50).' using errcode = '22023';
   end if;
 
+  -- Build deterministic canonical SHA-256 request fingerprint covering identity, delivery, and sorted normalized items
+  v_norm_loc := case
+    when v_method = 'Pickup' then 'pickup:store-counter'
+    else lower(trim(coalesce(p_delivery_location, '')))
+  end;
+  v_norm_addr := case
+    when v_method = 'Pickup' then 'pickup:store-counter'
+    else lower(trim(coalesce(p_delivery_address, '')))
+  end;
+
+  with norm_items as (
+    select
+      lower(trim(coalesce(elem->>'productId', ''))) as pid,
+      lower(trim(coalesce(elem->>'slug', ''))) as slug,
+      lower(trim(coalesce(elem->>'variantId', ''))) as vid,
+      lower(trim(coalesce(elem->>'variantName', ''))) as vname,
+      lower(trim(coalesce(elem->>'variantValue', ''))) as vval,
+      coalesce((elem->>'quantity')::integer, 0) as qty
+    from jsonb_array_elements(p_items) as elem
+  )
+  select
+    coalesce(
+      jsonb_agg(
+        jsonb_build_object(
+          'pid', pid,
+          'slug', slug,
+          'vid', vid,
+          'vname', vname,
+          'vval', vval,
+          'qty', qty
+        )
+        order by pid, slug, vid, vname, vval, qty
+      ),
+      '[]'::jsonb
+    ),
+    coalesce(sum(qty), 0)::integer
+  into v_norm_items, v_incoming_item_sum
+  from norm_items;
+
+  v_req_fingerprint := encode(
+    sha256(
+      convert_to(
+        jsonb_build_array(
+          lower(v_name),
+          v_phone_digits,
+          lower(coalesce(v_email, '')),
+          v_method,
+          v_norm_loc,
+          v_norm_addr,
+          lower(coalesce(v_notes, '')),
+          v_norm_items
+        )::text,
+        'UTF8'
+      )
+    ),
+    'hex'
+  );
+
   -- Serialize concurrent transactions sharing the same client_request_id
   perform pg_advisory_xact_lock(7042, hashtext(v_req_id));
 
@@ -612,6 +1231,30 @@ begin
   limit 1;
 
   if found then
+    if v_existing_order.request_fingerprint is not null then
+      if v_existing_order.request_fingerprint <> v_req_fingerprint then
+        raise exception 'Conflicting order details submitted with an existing checkout request ID.' using errcode = '23505';
+      end if;
+    else
+      select coalesce(sum(oi.quantity), 0)::integer
+      into v_legacy_item_sum
+      from public.order_items oi
+      where oi.order_id = v_existing_order.id;
+
+      if lower(trim(coalesce(v_existing_order.customer_name, ''))) <> lower(v_name)
+         or regexp_replace(coalesce(v_existing_order.customer_phone, ''), '\D', '', 'g') <> v_phone_digits
+         or lower(coalesce(nullif(trim(v_existing_order.customer_email), ''), '')) <> lower(coalesce(v_email, ''))
+         or v_existing_order.delivery_method <> v_method
+         or (v_method = 'Delivery' and (
+              lower(trim(coalesce(v_existing_order.delivery_location, ''))) <> v_norm_loc
+              or lower(trim(coalesce(v_existing_order.delivery_address, ''))) <> v_norm_addr
+            ))
+         or lower(coalesce(nullif(trim(v_existing_order.customer_notes), ''), '')) <> lower(coalesce(v_notes, ''))
+         or v_legacy_item_sum <> v_incoming_item_sum then
+        raise exception 'Conflicting order details submitted with an existing checkout request ID.' using errcode = '23505';
+      end if;
+    end if;
+
     select coalesce(
       jsonb_agg(
         jsonb_build_object(
@@ -630,12 +1273,6 @@ begin
     into v_existing_items
     from public.order_items oi
     where oi.order_id = v_existing_order.id;
-
-    if regexp_replace(coalesce(v_existing_order.customer_phone, ''), '\D', '', 'g') <> v_phone_digits
-       or v_existing_order.delivery_method <> v_method
-       or jsonb_array_length(v_existing_items) <> jsonb_array_length(p_items) then
-      raise exception 'Conflicting order details submitted with an existing checkout request ID.' using errcode = '23505';
-    end if;
 
     return jsonb_build_object(
       'id', v_existing_order.id,
@@ -659,6 +1296,183 @@ begin
       'idempotentReplay', true,
       'items', v_existing_items
     );
+  end if;
+
+  -- Durable DB-level sliding-window checkout rate limits (runs after idempotency replay check)
+  delete from public.checkout_rate_limits
+  where bucket_key in (
+    select crl.bucket_key
+    from public.checkout_rate_limits crl
+    where crl.window_started_at < v_now - interval '24 hours'
+      and (crl.locked_until is null or crl.locked_until < v_now)
+    limit 100
+  );
+
+  begin
+    v_hdr_ip := coalesce(
+      nullif(trim((current_setting('request.headers', true)::jsonb)->>'x-real-ip'), ''),
+      nullif(trim(split_part(coalesce((current_setting('request.headers', true)::jsonb)->>'x-forwarded-for', ''), ',', 1)), ''),
+      ''
+    );
+  exception when others then
+    v_hdr_ip := '';
+  end;
+
+  v_ip_source := nullif(trim(coalesce(p_client_ip, '')), '');
+  if v_ip_source is null and v_hdr_ip <> '' then
+    v_ip_source := md5(v_hdr_ip);
+  end if;
+
+  v_phone_bucket := 'phone:' || md5(v_phone_digits);
+  perform pg_advisory_xact_lock(7101, hashtext(v_phone_bucket));
+
+  insert into public.checkout_rate_limits (bucket_key, scope, attempt_count, window_started_at, locked_until)
+  values (v_phone_bucket, 'phone', 1, v_now, null)
+  on conflict (bucket_key) do update
+  set
+    scope = 'phone',
+    attempt_count = case
+      when public.checkout_rate_limits.locked_until is not null
+           and public.checkout_rate_limits.locked_until > v_now
+        then public.checkout_rate_limits.attempt_count
+      when public.checkout_rate_limits.window_started_at < v_now - interval '15 minutes'
+           or (public.checkout_rate_limits.locked_until is not null and public.checkout_rate_limits.locked_until <= v_now)
+        then 1
+      else public.checkout_rate_limits.attempt_count + 1
+    end,
+    window_started_at = case
+      when public.checkout_rate_limits.locked_until is not null
+           and public.checkout_rate_limits.locked_until > v_now
+        then public.checkout_rate_limits.window_started_at
+      when public.checkout_rate_limits.window_started_at < v_now - interval '15 minutes'
+           or (public.checkout_rate_limits.locked_until is not null and public.checkout_rate_limits.locked_until <= v_now)
+        then v_now
+      else public.checkout_rate_limits.window_started_at
+    end,
+    locked_until = case
+      when public.checkout_rate_limits.locked_until is not null
+           and public.checkout_rate_limits.locked_until > v_now
+        then public.checkout_rate_limits.locked_until
+      when (
+        case
+          when public.checkout_rate_limits.window_started_at < v_now - interval '15 minutes'
+               or (public.checkout_rate_limits.locked_until is not null and public.checkout_rate_limits.locked_until <= v_now)
+            then 1
+          else public.checkout_rate_limits.attempt_count + 1
+        end
+      ) > 5 then v_now + interval '15 minutes'
+      else null
+    end
+  returning * into v_rl;
+
+  if v_rl.locked_until is not null and v_rl.locked_until > v_now then
+    return jsonb_build_object(
+      'rateLimited', true,
+      'retryAfterSec', greatest(1, ceil(extract(epoch from (v_rl.locked_until - v_now)))::integer),
+      'error', 'Too many checkout attempts from this phone number. Please wait before placing another order.'
+    );
+  end if;
+
+  if v_ip_source is not null then
+    v_ip_bucket := 'ip:' || v_ip_source;
+    perform pg_advisory_xact_lock(7101, hashtext(v_ip_bucket));
+
+    insert into public.checkout_rate_limits (bucket_key, scope, attempt_count, window_started_at, locked_until)
+    values (v_ip_bucket, 'ip', 1, v_now, null)
+    on conflict (bucket_key) do update
+    set
+      scope = 'ip',
+      attempt_count = case
+        when public.checkout_rate_limits.locked_until is not null
+             and public.checkout_rate_limits.locked_until > v_now
+          then public.checkout_rate_limits.attempt_count
+        when public.checkout_rate_limits.window_started_at < v_now - interval '10 minutes'
+             or (public.checkout_rate_limits.locked_until is not null and public.checkout_rate_limits.locked_until <= v_now)
+          then 1
+        else public.checkout_rate_limits.attempt_count + 1
+      end,
+      window_started_at = case
+        when public.checkout_rate_limits.locked_until is not null
+             and public.checkout_rate_limits.locked_until > v_now
+          then public.checkout_rate_limits.window_started_at
+        when public.checkout_rate_limits.window_started_at < v_now - interval '10 minutes'
+             or (public.checkout_rate_limits.locked_until is not null and public.checkout_rate_limits.locked_until <= v_now)
+          then v_now
+        else public.checkout_rate_limits.window_started_at
+      end,
+      locked_until = case
+        when public.checkout_rate_limits.locked_until is not null
+             and public.checkout_rate_limits.locked_until > v_now
+          then public.checkout_rate_limits.locked_until
+        when (
+          case
+            when public.checkout_rate_limits.window_started_at < v_now - interval '10 minutes'
+                 or (public.checkout_rate_limits.locked_until is not null and public.checkout_rate_limits.locked_until <= v_now)
+              then 1
+            else public.checkout_rate_limits.attempt_count + 1
+          end
+        ) > 8 then v_now + interval '10 minutes'
+        else null
+      end
+    returning * into v_rl;
+
+    if v_rl.locked_until is not null and v_rl.locked_until > v_now then
+      return jsonb_build_object(
+        'rateLimited', true,
+        'retryAfterSec', greatest(1, ceil(extract(epoch from (v_rl.locked_until - v_now)))::integer),
+        'error', 'Too many checkout attempts from this network. Please wait before trying again.'
+      );
+    end if;
+  elsif coalesce(auth.role(), '') <> 'service_role' then
+    v_anon_bucket := 'anon:direct';
+    perform pg_advisory_xact_lock(7101, hashtext(v_anon_bucket));
+
+    insert into public.checkout_rate_limits (bucket_key, scope, attempt_count, window_started_at, locked_until)
+    values (v_anon_bucket, 'anon_direct', 1, v_now, null)
+    on conflict (bucket_key) do update
+    set
+      scope = 'anon_direct',
+      attempt_count = case
+        when public.checkout_rate_limits.locked_until is not null
+             and public.checkout_rate_limits.locked_until > v_now
+          then public.checkout_rate_limits.attempt_count
+        when public.checkout_rate_limits.window_started_at < v_now - interval '1 minute'
+             or (public.checkout_rate_limits.locked_until is not null and public.checkout_rate_limits.locked_until <= v_now)
+          then 1
+        else public.checkout_rate_limits.attempt_count + 1
+      end,
+      window_started_at = case
+        when public.checkout_rate_limits.locked_until is not null
+             and public.checkout_rate_limits.locked_until > v_now
+          then public.checkout_rate_limits.window_started_at
+        when public.checkout_rate_limits.window_started_at < v_now - interval '1 minute'
+             or (public.checkout_rate_limits.locked_until is not null and public.checkout_rate_limits.locked_until <= v_now)
+          then v_now
+        else public.checkout_rate_limits.window_started_at
+      end,
+      locked_until = case
+        when public.checkout_rate_limits.locked_until is not null
+             and public.checkout_rate_limits.locked_until > v_now
+          then public.checkout_rate_limits.locked_until
+        when (
+          case
+            when public.checkout_rate_limits.window_started_at < v_now - interval '1 minute'
+                 or (public.checkout_rate_limits.locked_until is not null and public.checkout_rate_limits.locked_until <= v_now)
+              then 1
+            else public.checkout_rate_limits.attempt_count + 1
+          end
+        ) > 10 then v_now + interval '1 minute'
+        else null
+      end
+    returning * into v_rl;
+
+    if v_rl.locked_until is not null and v_rl.locked_until > v_now then
+      return jsonb_build_object(
+        'rateLimited', true,
+        'retryAfterSec', greatest(1, ceil(extract(epoch from (v_rl.locked_until - v_now)))::integer),
+        'error', 'Too many checkout attempts. Please use the checkout page or wait a minute.'
+      );
+    end if;
   end if;
 
   -- Load authoritative business settings
@@ -835,7 +1649,8 @@ begin
     order_status,
     payment_status,
     customer_notes,
-    client_request_id
+    client_request_id,
+    request_fingerprint
   ) values (
     v_order_ref,
     v_customer_id,
@@ -852,7 +1667,8 @@ begin
     'Confirmed',
     'Pending Verification',
     v_notes,
-    v_req_id
+    v_req_id,
+    v_req_fingerprint
   )
   returning id into v_order_id;
 
@@ -921,7 +1737,7 @@ $$;
 
 -- Least-privilege function EXECUTE grants:
 --   * Trigger helper and admin helpers cannot be executed by PUBLIC or anon directly.
---   * Public checkout and order-tracking RPCs are strictly scoped for anon, authenticated, and service_role.
+--   * Backend checkout, lookup, and login rate-limit RPCs can ONLY execute via service_role.
 revoke all on function public.update_updated_at_column() from public, anon;
 
 revoke all on function public.is_novaluxe_admin() from public, anon;
@@ -930,11 +1746,26 @@ grant execute on function public.is_novaluxe_admin() to authenticated, service_r
 revoke all on function public.is_novaluxe_super_admin() from public, anon;
 grant execute on function public.is_novaluxe_super_admin() to authenticated, service_role;
 
-revoke all on function public.lookup_order_by_reference(text, text, text) from public;
-grant execute on function public.lookup_order_by_reference(text, text, text) to anon, authenticated, service_role;
+revoke all on function public.is_approved_novaluxe_media_url(text, text) from public, anon;
+grant execute on function public.is_approved_novaluxe_media_url(text, text) to authenticated, service_role;
 
-revoke all on function public.create_checkout_order(text, text, text, text, text, text, text, jsonb, text) from public;
-grant execute on function public.create_checkout_order(text, text, text, text, text, text, text, jsonb, text) to anon, authenticated, service_role;
+revoke all on function public.admin_login_rate_limit(text, text, text) from public, anon, authenticated;
+grant execute on function public.admin_login_rate_limit(text, text, text) to service_role;
+
+revoke all on function public.save_product_with_images(
+  uuid, text, text, text, numeric, text, uuid, text, text, integer,
+  boolean, boolean, boolean, boolean, text, text, text, text, jsonb, jsonb, jsonb, jsonb
+) from public, anon;
+grant execute on function public.save_product_with_images(
+  uuid, text, text, text, numeric, text, uuid, text, text, integer,
+  boolean, boolean, boolean, boolean, text, text, text, text, jsonb, jsonb, jsonb, jsonb
+) to authenticated, service_role;
+
+revoke all on function public.lookup_order_by_reference(text, text, text) from public, anon, authenticated;
+grant execute on function public.lookup_order_by_reference(text, text, text) to service_role;
+
+revoke all on function public.create_checkout_order(text, text, text, text, text, text, text, jsonb, text, text) from public, anon, authenticated;
+grant execute on function public.create_checkout_order(text, text, text, text, text, text, text, jsonb, text, text) to service_role;
 
 -- 18. ENABLE ROW LEVEL SECURITY (RLS) ON ALL NOVALUXE TABLES
 alter table public.categories enable row level security;
@@ -949,8 +1780,14 @@ alter table public.site_settings enable row level security;
 alter table public.admin_profiles enable row level security;
 alter table public.bulk_upload_history enable row level security;
 alter table public.order_lookup_attempts enable row level security;
+alter table public.checkout_rate_limits enable row level security;
+alter table public.admin_login_attempts enable row level security;
+alter table public.trusted_media_hosts enable row level security;
 
-revoke all on table public.order_lookup_attempts from anon, authenticated;
+revoke all on table public.order_lookup_attempts from public, anon, authenticated;
+revoke all on table public.checkout_rate_limits from public, anon, authenticated;
+revoke all on table public.admin_login_attempts from public, anon, authenticated;
+revoke all on table public.trusted_media_hosts from anon;
 
 -- 19. COMPLETE PG_POLICIES AUDIT CLEANUP (REMOVES ALL OBSOLETE/PERMISSIVE POLICIES ON NOVALUXE TABLES ONLY)
 do $$
@@ -973,7 +1810,10 @@ begin
         'site_settings',
         'admin_profiles',
         'bulk_upload_history',
-        'order_lookup_attempts'
+        'order_lookup_attempts',
+        'checkout_rate_limits',
+        'admin_login_attempts',
+        'trusted_media_hosts'
       )
   loop
     execute format('drop policy if exists %I on %I.%I;', pol.policyname, pol.schemaname, pol.tablename);
@@ -1006,12 +1846,18 @@ create policy "Authenticated can view categories"
 
 create policy "Admins can insert categories"
   on public.categories for insert to authenticated
-  with check (public.is_novaluxe_admin());
+  with check (
+    public.is_novaluxe_admin()
+    and public.is_approved_novaluxe_media_url(image_url, 'category')
+  );
 
 create policy "Admins can update categories"
   on public.categories for update to authenticated
   using (public.is_novaluxe_admin())
-  with check (public.is_novaluxe_admin());
+  with check (
+    public.is_novaluxe_admin()
+    and public.is_approved_novaluxe_media_url(image_url, 'category')
+  );
 
 create policy "Admins can delete categories"
   on public.categories for delete to authenticated
@@ -1061,12 +1907,18 @@ create policy "Authenticated can view product images"
 
 create policy "Admins can insert product images"
   on public.product_images for insert to authenticated
-  with check (public.is_novaluxe_admin());
+  with check (
+    public.is_novaluxe_admin()
+    and public.is_approved_novaluxe_media_url(image_url, 'product')
+  );
 
 create policy "Admins can update product images"
   on public.product_images for update to authenticated
   using (public.is_novaluxe_admin())
-  with check (public.is_novaluxe_admin());
+  with check (
+    public.is_novaluxe_admin()
+    and public.is_approved_novaluxe_media_url(image_url, 'product')
+  );
 
 create policy "Admins can delete product images"
   on public.product_images for delete to authenticated
@@ -1117,18 +1969,18 @@ create policy "Authenticated can view site settings"
     or public.is_novaluxe_admin()
   );
 
-create policy "Admins can insert site settings"
+create policy "Super admins can insert site settings"
   on public.site_settings for insert to authenticated
-  with check (public.is_novaluxe_admin());
+  with check (public.is_novaluxe_super_admin());
 
-create policy "Admins can update site settings"
+create policy "Super admins can update site settings"
   on public.site_settings for update to authenticated
-  using (public.is_novaluxe_admin())
-  with check (public.is_novaluxe_admin());
+  using (public.is_novaluxe_super_admin())
+  with check (public.is_novaluxe_super_admin());
 
-create policy "Admins can delete site settings"
+create policy "Super admins can delete site settings"
   on public.site_settings for delete to authenticated
-  using (public.is_novaluxe_admin());
+  using (public.is_novaluxe_super_admin());
 
 -- CUSTOMERS (Admin-only direct table access; public checkout writes atomically via create_checkout_order RPC)
 create policy "Admins can view customers"
@@ -1257,63 +2109,153 @@ create policy "Admins can delete bulk upload history"
   on public.bulk_upload_history for delete to authenticated
   using (public.is_novaluxe_admin());
 
--- 21. SUPABASE STORAGE BUCKETS & HARDENED POLICIES
-insert into storage.buckets (id, name, public)
-values
-  ('product-images', 'product-images', true),
-  ('category-images', 'category-images', true),
-  ('promotional-assets', 'promotional-assets', true)
-on conflict (id) do update set public = true;
+-- TRUSTED MEDIA HOSTS (Super admins only)
+create policy "Super admins can view trusted media hosts"
+  on public.trusted_media_hosts for select to authenticated
+  using (public.is_novaluxe_super_admin());
 
--- product-images: public read for storefront assets; admin-only upload/update/delete
+create policy "Super admins can insert trusted media hosts"
+  on public.trusted_media_hosts for insert to authenticated
+  with check (public.is_novaluxe_super_admin());
+
+create policy "Super admins can update trusted media hosts"
+  on public.trusted_media_hosts for update to authenticated
+  using (public.is_novaluxe_super_admin())
+  with check (public.is_novaluxe_super_admin());
+
+create policy "Super admins can delete trusted media hosts"
+  on public.trusted_media_hosts for delete to authenticated
+  using (public.is_novaluxe_super_admin());
+
+-- 21. SUPABASE STORAGE BUCKETS & HARDENED POLICIES
+insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+values
+  ('product-images', 'product-images', true, 5242880, array['image/jpeg', 'image/jpg', 'image/png', 'image/webp']),
+  ('category-images', 'category-images', true, 5242880, array['image/jpeg', 'image/jpg', 'image/png', 'image/webp']),
+  ('promotional-assets', 'promotional-assets', true, 52428800, array['image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'video/mp4', 'video/webm', 'video/quicktime'])
+on conflict (id) do update set
+  public = true,
+  file_size_limit = excluded.file_size_limit,
+  allowed_mime_types = excluded.allowed_mime_types;
+
+-- product-images: public read for storefront assets; admin-only upload/update within products/ prefix
 create policy "Public Access to product-images"
   on storage.objects for select
   using (bucket_id = 'product-images');
 
 create policy "Admins can upload to product-images"
   on storage.objects for insert to authenticated
-  with check (bucket_id = 'product-images' and public.is_novaluxe_admin());
+  with check (
+    bucket_id = 'product-images'
+    and public.is_novaluxe_admin()
+    and name like 'products/%'
+    and position('..' in name) = 0
+    and name !~ '^/'
+  );
 
 create policy "Admins can update product-images"
   on storage.objects for update to authenticated
-  using (bucket_id = 'product-images' and public.is_novaluxe_admin())
-  with check (bucket_id = 'product-images' and public.is_novaluxe_admin());
+  using (
+    bucket_id = 'product-images'
+    and public.is_novaluxe_admin()
+    and name like 'products/%'
+    and position('..' in name) = 0
+    and name !~ '^/'
+  )
+  with check (
+    bucket_id = 'product-images'
+    and public.is_novaluxe_admin()
+    and name like 'products/%'
+    and position('..' in name) = 0
+    and name !~ '^/'
+  );
 
 create policy "Admins can delete from product-images"
   on storage.objects for delete to authenticated
   using (bucket_id = 'product-images' and public.is_novaluxe_admin());
 
--- category-images: public read for storefront assets; admin-only upload/update/delete
+-- category-images: public read for storefront assets; admin-only upload/update within categories/ prefix
 create policy "Public Access to category-images"
   on storage.objects for select
   using (bucket_id = 'category-images');
 
 create policy "Admins can upload to category-images"
   on storage.objects for insert to authenticated
-  with check (bucket_id = 'category-images' and public.is_novaluxe_admin());
+  with check (
+    bucket_id = 'category-images'
+    and public.is_novaluxe_admin()
+    and name like 'categories/%'
+    and position('..' in name) = 0
+    and name !~ '^/'
+  );
 
 create policy "Admins can update category-images"
   on storage.objects for update to authenticated
-  using (bucket_id = 'category-images' and public.is_novaluxe_admin())
-  with check (bucket_id = 'category-images' and public.is_novaluxe_admin());
+  using (
+    bucket_id = 'category-images'
+    and public.is_novaluxe_admin()
+    and name like 'categories/%'
+    and position('..' in name) = 0
+    and name !~ '^/'
+  )
+  with check (
+    bucket_id = 'category-images'
+    and public.is_novaluxe_admin()
+    and name like 'categories/%'
+    and position('..' in name) = 0
+    and name !~ '^/'
+  );
 
 create policy "Admins can delete from category-images"
   on storage.objects for delete to authenticated
   using (bucket_id = 'category-images' and public.is_novaluxe_admin());
 
--- promotional-assets: public read for storefront promotional pop-up media; admin-only upload/update/delete
+-- promotional-assets: public read for storefront promotional pop-up media; admin-only upload/update within approved prefixes
 create policy "Public Access to promotional-assets"
   on storage.objects for select
   using (bucket_id = 'promotional-assets');
 
 create policy "Admins can upload to promotional-assets"
   on storage.objects for insert to authenticated
-  with check (bucket_id = 'promotional-assets' and public.is_novaluxe_admin());
+  with check (
+    bucket_id = 'promotional-assets'
+    and public.is_novaluxe_admin()
+    and (
+      name like 'hero/%'
+      or name like 'promotions/images/%'
+      or name like 'promotions/posters/%'
+      or name like 'promotions/videos/%'
+    )
+    and position('..' in name) = 0
+    and name !~ '^/'
+  );
 
 create policy "Admins can update promotional-assets"
   on storage.objects for update to authenticated
-  using (bucket_id = 'promotional-assets' and public.is_novaluxe_admin())
-  with check (bucket_id = 'promotional-assets' and public.is_novaluxe_admin());
+  using (
+    bucket_id = 'promotional-assets'
+    and public.is_novaluxe_admin()
+    and (
+      name like 'hero/%'
+      or name like 'promotions/images/%'
+      or name like 'promotions/posters/%'
+      or name like 'promotions/videos/%'
+    )
+    and position('..' in name) = 0
+    and name !~ '^/'
+  )
+  with check (
+    bucket_id = 'promotional-assets'
+    and public.is_novaluxe_admin()
+    and (
+      name like 'hero/%'
+      or name like 'promotions/images/%'
+      or name like 'promotions/posters/%'
+      or name like 'promotions/videos/%'
+    )
+    and position('..' in name) = 0
+    and name !~ '^/'
+  );
 
 create policy "Admins can delete from promotional-assets"
   on storage.objects for delete to authenticated
@@ -1343,9 +2285,14 @@ values (
     "tiktokUrl": "https://www.tiktok.com/@sennel_bbm",
     "promoCampaign": {
       "enabled": true,
-      "mediaType": "video",
-      "mediaUrl": "/videos/novaluxe-promo.mp4",
+      "displayMode": "image",
+      "mediaType": "image",
+      "mediaUrl": "/images/hero/hero_beauty_cosmetics.jpg",
+      "imageUrl": "/images/hero/hero_beauty_cosmetics.jpg",
+      "videoUrl": "",
       "posterUrl": "/images/hero/hero_beauty_cosmetics.jpg",
+      "desktopBehavior": "autoplay_muted",
+      "mobileBehavior": "autoplay_muted",
       "title": "NOVALUXE by Sennel",
       "subtitle": "Elevate your daily routine with curated cosmetics, skincare, and luxury fragrances in Monrovia.",
       "ctaText": "EXPLORE NOVALUXE",

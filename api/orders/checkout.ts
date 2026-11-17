@@ -1,10 +1,13 @@
 import type { IncomingMessage, ServerResponse } from 'http';
 import {
   fetchWithTimeout,
+  getClientIp,
   getSupabaseServerConfig,
+  hashClientIp,
   isAbortError,
   readJsonBody
 } from '../_lib/canonicalCatalog';
+import { applyCors } from '../_lib/cors';
 
 interface VercelRequest extends IncomingMessage {
   body?: any;
@@ -74,18 +77,20 @@ export async function processCheckoutOrder(
     }
   }
 
-  // Strictly persistent transactional checkout via Supabase create_checkout_order RPC.
-  // Never return a simulated/fallback success order if Supabase did not persist it.
+  // Strictly persistent transactional checkout via Supabase create_checkout_order RPC (service_role only).
+  // Never fall back to the public anon key or return a simulated success order.
   const sb = getSupabaseServerConfig(envSource);
-  if (!sb.isConfigured) {
+  if (!sb.url || !sb.hasServiceRole || !sb.serviceRoleKey) {
     return {
       status: 503,
       body: {
         error:
-          'Checkout service is temporarily unavailable because the order database is not configured. Please try again later or order via WhatsApp.'
+          'Checkout service is temporarily unavailable because server database credentials are not configured. Please try again later or order via WhatsApp.'
       }
     };
   }
+
+  const clientIpHash = hashClientIp(getClientIp(req), envSource);
 
   try {
     const rpcResp = await fetchWithTimeout(
@@ -94,8 +99,8 @@ export async function processCheckoutOrder(
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          apikey: sb.apiKey,
-          Authorization: `Bearer ${sb.apiKey}`
+          apikey: sb.serviceRoleKey,
+          Authorization: `Bearer ${sb.serviceRoleKey}`
         },
         body: JSON.stringify({
           p_customer_name: customerName,
@@ -106,7 +111,8 @@ export async function processCheckoutOrder(
           p_delivery_method: deliveryMethod,
           p_customer_notes: customerNotes || null,
           p_items: sanitizedItems,
-          p_client_request_id: clientRequestId
+          p_client_request_id: clientRequestId,
+          p_client_ip: clientIpHash
         })
       },
       10_000
@@ -114,6 +120,19 @@ export async function processCheckoutOrder(
 
     if (rpcResp.ok) {
       const order = await rpcResp.json().catch(() => null);
+      if (order?.rateLimited) {
+        const retryAfterSec = Math.max(1, Number(order.retryAfterSec || 60));
+        return {
+          status: 429,
+          headers: { 'Retry-After': String(retryAfterSec) },
+          body: {
+            error:
+              typeof order.error === 'string' && order.error.trim()
+                ? order.error
+                : `Too many checkout attempts. Please wait ${retryAfterSec} seconds before placing another order.`
+          }
+        };
+      }
       if (!order || !order.id || !order.orderReference) {
         return {
           status: 503,
@@ -138,7 +157,17 @@ export async function processCheckoutOrder(
     const errCode = String(errData?.code || '');
     const errMsg = String(errData?.message || '').trim();
 
-    if (errCode === 'PGRST202' || errCode === '42883' || rpcResp.status >= 500) {
+    if (errMsg.toLowerCase().includes('too many checkout attempts')) {
+      return {
+        status: 429,
+        headers: { 'Retry-After': '60' },
+        body: {
+          error: errMsg
+        }
+      };
+    }
+
+    if (errCode === 'PGRST202' || errCode === '42883' || errCode === '42501' || rpcResp.status >= 500) {
       return {
         status: 503,
         body: {
@@ -152,7 +181,7 @@ export async function processCheckoutOrder(
       return {
         status: 409,
         body: {
-          error: errMsg || 'Duplicate or conflicting checkout submission detected.'
+          error: 'Conflicting order details submitted with an existing checkout request ID.'
         }
       };
     }
@@ -185,16 +214,8 @@ export async function processCheckoutOrder(
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  res.setHeader('Access-Control-Allow-Credentials', 'true');
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'POST,OPTIONS');
-  res.setHeader(
-    'Access-Control-Allow-Headers',
-    'X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version, Authorization'
-  );
-
-  if (req.method === 'OPTIONS') {
-    return res.status(200).end();
+  if (applyCors(req, res, 'POST,OPTIONS') === 'ended') {
+    return;
   }
 
   if (req.method !== 'POST') {

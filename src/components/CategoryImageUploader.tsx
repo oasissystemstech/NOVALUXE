@@ -10,8 +10,8 @@ import {
   Sparkles,
   Loader2
 } from 'lucide-react';
-import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { handleImageError } from '../lib/imageUtils';
+import { uploadMediaToSupabaseStorage } from '../lib/storageUpload';
 
 interface CategoryImageUploaderProps {
   imageUrl?: string;
@@ -40,7 +40,6 @@ export const CategoryImageUploader: React.FC<CategoryImageUploaderProps> = ({
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Notify parent component of uploading state
   useEffect(() => {
     if (onUploadStateChange) {
       onUploadStateChange(isUploading);
@@ -61,7 +60,6 @@ export const CategoryImageUploader: React.FC<CategoryImageUploaderProps> = ({
       return 'No file selected.';
     }
 
-    // Check MIME type and file extension
     const extension = file.name.split('.').pop()?.toLowerCase() || '';
     const isExtensionAllowed = ALLOWED_EXTENSIONS.includes(extension);
     const isMimeAllowed = ALLOWED_MIME_TYPES.includes(file.type);
@@ -70,23 +68,12 @@ export const CategoryImageUploader: React.FC<CategoryImageUploaderProps> = ({
       return 'Please select a valid JPG, PNG, or WEBP image.';
     }
 
-    // Check file size limit (5 MB)
     if (file.size > MAX_FILE_SIZE) {
       const sizeMB = (file.size / (1024 * 1024)).toFixed(1);
       return `Image size must not exceed 5 MB. Selected file is ${sizeMB} MB.`;
     }
 
     return null;
-  };
-
-  // Convert File to an optimized base64 Data URL (used as fallback or offline)
-  const readFileAsDataUrl = (file: File): Promise<string> => {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => resolve(reader.result as string);
-      reader.onerror = () => reject(new Error('Failed to read image file.'));
-      reader.readAsDataURL(file);
-    });
   };
 
   const processAndUploadFile = async (file: File) => {
@@ -101,7 +88,6 @@ export const CategoryImageUploader: React.FC<CategoryImageUploaderProps> = ({
     setIsUploading(true);
     setUploadProgress(15);
 
-    // Progress simulation interval
     const progressTimer = setInterval(() => {
       setUploadProgress(prev => {
         if (prev < 85) return prev + Math.floor(Math.random() * 15) + 5;
@@ -110,91 +96,31 @@ export const CategoryImageUploader: React.FC<CategoryImageUploaderProps> = ({
     }, 120);
 
     try {
-      const sanitizedName = file.name
-        .toLowerCase()
-        .replace(/[^a-z0-9.]/g, '-')
-        .replace(/-+/g, '-');
-      const timestamp = Date.now();
-      const storagePath = `categories/${categorySlug}/${timestamp}-${sanitizedName}`;
+      const result = await uploadMediaToSupabaseStorage({
+        bucket: 'category-images',
+        folder: `categories/${categorySlug || 'category'}`,
+        file,
+        maxBytes: MAX_FILE_SIZE,
+        allowedMimeTypes: ALLOWED_MIME_TYPES,
+        allowedExtensions: ALLOWED_EXTENSIONS
+      });
 
-      // 1. If Supabase is configured, upload to Supabase Storage
-      if (supabase && isSupabaseConfigured) {
-        // Try uploading to 'category-images' bucket first, then fallback to 'product-images'
-        let targetBucket = 'category-images';
-        let { error: uploadError } = await supabase.storage
-          .from(targetBucket)
-          .upload(storagePath, file, {
-            cacheControl: '3600',
-            upsert: true,
-            contentType: file.type || 'image/jpeg'
-          });
-
-        if (uploadError && (uploadError.message.includes('not found') || uploadError.message.includes('Bucket'))) {
-          // If category-images bucket is not yet provisioned, fallback to product-images bucket
-          targetBucket = 'product-images';
-          const retryResult = await supabase.storage
-            .from(targetBucket)
-            .upload(storagePath, file, {
-              cacheControl: '3600',
-              upsert: true,
-              contentType: file.type || 'image/jpeg'
-            });
-          uploadError = retryResult.error;
-        }
-
-        if (uploadError) {
-          throw new Error(uploadError.message || 'Failed to upload image to Supabase Storage.');
-        }
-
-        // Retrieve public URL from Supabase Storage
-        const { data: publicUrlData } = supabase.storage
-          .from(targetBucket)
-          .getPublicUrl(storagePath);
-
-        if (!publicUrlData || !publicUrlData.publicUrl) {
-          throw new Error('Could not retrieve public URL for uploaded category image.');
-        }
-
-        clearInterval(progressTimer);
-        setUploadProgress(100);
-
-        const finalUrl = publicUrlData.publicUrl;
-        onImageChange(finalUrl);
-        setSuccessMessage('Category image uploaded successfully to persistent storage!');
-
-        setTimeout(() => {
-          setIsUploading(false);
-          setUploadProgress(0);
-        }, 500);
-        return;
-      }
-
-      // 2. Resilient local fallback if Supabase client is not connected
-      // Converts file to persistent base64 data URL so preview and saving always succeed
-      const dataUrl = await readFileAsDataUrl(file);
       clearInterval(progressTimer);
       setUploadProgress(100);
-      onImageChange(dataUrl);
-      setSuccessMessage('Category image loaded and ready to save!');
+
+      onImageChange(result.publicUrl);
+      setSuccessMessage('Category image uploaded to Supabase Storage! Click "Save Category" to publish.');
 
       setTimeout(() => {
         setIsUploading(false);
         setUploadProgress(0);
-      }, 400);
+      }, 450);
     } catch (err: any) {
       clearInterval(progressTimer);
       setIsUploading(false);
       setUploadProgress(0);
       console.error('Category image upload error:', err);
-
-      // Attempt client-side data URL fallback if network/bucket upload failed
-      try {
-        const dataUrl = await readFileAsDataUrl(file);
-        onImageChange(dataUrl);
-        setSuccessMessage('Image loaded locally. Connect Supabase Storage for remote hosting.');
-      } catch {
-        setError(err?.message || 'An error occurred while uploading the category image. Please try again.');
-      }
+      setError(err?.message || 'Unable to upload category image. Existing published image was preserved.');
     }
   };
 

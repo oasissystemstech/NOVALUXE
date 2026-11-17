@@ -1,12 +1,22 @@
 import { Category, Product, Order, Enquiry, SiteSettings, PromoCampaignConfig, BulkUploadHistoryEntry } from '../types';
-import { supabase } from './supabase';
+import { supabase, isSupabaseConfigured } from './supabase';
 import { normalizeImageUrl } from './imageUtils';
+import {
+  isNonPersistentMediaUrl,
+  normalizeMediaAssetUrl,
+  normalizePromoCampaign
+} from './promoUtils';
 
 export const INITIAL_PROMO_CAMPAIGN: PromoCampaignConfig = {
   enabled: true,
-  mediaType: 'video',
-  mediaUrl: '/videos/novaluxe-promo.mp4',
+  displayMode: 'image',
+  mediaType: 'image',
+  mediaUrl: '/images/hero/hero_beauty_cosmetics.jpg',
+  imageUrl: '/images/hero/hero_beauty_cosmetics.jpg',
+  videoUrl: '',
   posterUrl: '/images/hero/hero_beauty_cosmetics.jpg',
+  desktopBehavior: 'autoplay_muted',
+  mobileBehavior: 'autoplay_muted',
   title: 'NOVALUXE by Sennel',
   subtitle: 'Elevate your daily routine with curated cosmetics, skincare, and luxury fragrances in Monrovia.',
   ctaText: 'EXPLORE NOVALUXE',
@@ -495,6 +505,65 @@ class StoreRepository {
     }
   }
 
+  private async readAdminSessionToken(): Promise<string | null> {
+    try {
+      const hmacToken = sessionStorage.getItem('novaluxe_admin_auth_token');
+      if (hmacToken) return hmacToken;
+    } catch {}
+
+    if (supabase && isSupabaseConfigured) {
+      try {
+        const { data } = await supabase.auth.getSession();
+        if (data.session?.access_token) {
+          return data.session.access_token;
+        }
+      } catch {}
+    }
+
+    return null;
+  }
+
+  private async hasVerifiedDirectSupabaseAdmin(): Promise<boolean> {
+    if (!supabase || !isSupabaseConfigured) return false;
+    try {
+      const { data } = await supabase.auth.getSession();
+      const userId = data.session?.user?.id;
+      if (!userId) return false;
+      const { data: profile, error } = await supabase
+        .from('admin_profiles')
+        .select('role')
+        .eq('user_id', userId)
+        .maybeSingle();
+      return Boolean(!error && profile && (profile.role === 'admin' || profile.role === 'super_admin'));
+    } catch {
+      return false;
+    }
+  }
+
+  private async persistViaAdminApi<T = any>(action: string, data: Record<string, any>): Promise<T> {
+    const token = await this.readAdminSessionToken();
+    if (!token) {
+      throw new Error(
+        'Administrator write session unavailable. Sign in again or configure SUPABASE_SERVICE_ROLE_KEY.'
+      );
+    }
+
+    const res = await fetch('/api/admin/persist', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`
+      },
+      body: JSON.stringify({ action, data })
+    });
+
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok || !json?.success) {
+      throw new Error(json?.error || `Failed to persist '${action}' to Supabase (${res.status}).`);
+    }
+    return json as T;
+  }
+
   // Settings
   getSettings(): SiteSettings {
     const raw = this.get<SiteSettings>(STORAGE_KEYS.SETTINGS, INITIAL_SETTINGS);
@@ -502,27 +571,76 @@ class StoreRepository {
       ...INITIAL_SETTINGS,
       ...raw,
       heroImage: normalizeImageUrl(raw.heroImage, '/images/hero/hero_beauty_cosmetics.jpg'),
-      promoCampaign: {
-        ...INITIAL_PROMO_CAMPAIGN,
-        ...(raw.promoCampaign || {})
-      }
+      promoCampaign: normalizePromoCampaign(raw.promoCampaign, INITIAL_PROMO_CAMPAIGN)
     };
   }
 
-  updateSettings(settings: Partial<SiteSettings>): SiteSettings {
+  async syncSettingsFromSupabase(): Promise<SiteSettings | null> {
+    if (!supabase || !isSupabaseConfigured) return null;
+    try {
+      const { data, error } = await supabase
+        .from('site_settings')
+        .select('setting_value')
+        .eq('setting_key', 'general_config')
+        .maybeSingle();
+
+      if (error || !data?.setting_value) {
+        return null;
+      }
+
+      const remote = data.setting_value as Partial<SiteSettings>;
+      const merged: SiteSettings = {
+        ...INITIAL_SETTINGS,
+        ...remote,
+        heroImage: normalizeMediaAssetUrl(remote.heroImage, '/images/hero/hero_beauty_cosmetics.jpg'),
+        promoCampaign: normalizePromoCampaign(remote.promoCampaign, INITIAL_PROMO_CAMPAIGN)
+      };
+
+      this.set(STORAGE_KEYS.SETTINGS, merged);
+      return merged;
+    } catch {
+      return null;
+    }
+  }
+
+  async updateSettingsAsync(settings: Partial<SiteSettings>): Promise<SiteSettings> {
     const current = this.getSettings();
+    const nextPromo = settings.promoCampaign
+      ? normalizePromoCampaign(
+          { ...current.promoCampaign, ...settings.promoCampaign },
+          INITIAL_PROMO_CAMPAIGN
+        )
+      : normalizePromoCampaign(current.promoCampaign, INITIAL_PROMO_CAMPAIGN);
+
     const updated: SiteSettings = {
       ...current,
       ...settings,
-      promoCampaign: settings.promoCampaign
-        ? { ...current.promoCampaign, ...settings.promoCampaign }
-        : current.promoCampaign
+      heroImage: normalizeMediaAssetUrl(
+        settings.heroImage ?? current.heroImage,
+        '/images/hero/hero_beauty_cosmetics.jpg'
+      ),
+      promoCampaign: nextPromo
     };
-    this.set(STORAGE_KEYS.SETTINGS, updated);
 
-    if (supabase) {
-      Promise.resolve(
-        supabase
+    if (
+      isNonPersistentMediaUrl(updated.heroImage) ||
+      isNonPersistentMediaUrl(updated.promoCampaign.mediaUrl) ||
+      isNonPersistentMediaUrl(updated.promoCampaign.imageUrl) ||
+      isNonPersistentMediaUrl(updated.promoCampaign.videoUrl) ||
+      isNonPersistentMediaUrl(updated.promoCampaign.posterUrl)
+    ) {
+      throw new Error(
+        'Cannot publish temporary browser URLs (blob/data). Upload media to Supabase Storage first.'
+      );
+    }
+
+    if (supabase && isSupabaseConfigured) {
+      const canDirectWrite = await this.hasVerifiedDirectSupabaseAdmin();
+      let persistedDirect = false;
+      let directError: string | null = null;
+
+      if (canDirectWrite) {
+        const { error } = await supabase
           .from('site_settings')
           .upsert(
             {
@@ -530,14 +648,28 @@ class StoreRepository {
               setting_value: updated
             },
             { onConflict: 'setting_key' }
-          )
-      )
-        .then(({ error }: any) => {
-          if (error) console.info('Supabase settings sync note:', error.message);
-        })
-        .catch(() => {});
+          );
+        if (!error) {
+          persistedDirect = true;
+        } else {
+          directError = error.message;
+        }
+      }
+
+      if (!persistedDirect) {
+        try {
+          await this.persistViaAdminApi('save_settings', { settings: updated });
+        } catch (apiErr: any) {
+          throw new Error(
+            directError
+              ? `${directError} — Server fallback failed: ${apiErr?.message || 'Unable to save settings.'}`
+              : apiErr?.message || 'Unable to save settings to Supabase.'
+          );
+        }
+      }
     }
 
+    this.set(STORAGE_KEYS.SETTINGS, updated);
     return updated;
   }
 
@@ -550,43 +682,127 @@ class StoreRepository {
     }));
   }
 
-  saveCategory(cat: Category): Category {
+  async saveCategoryAsync(cat: Category): Promise<Category> {
+    if (isNonPersistentMediaUrl(cat.imageUrl)) {
+      throw new Error('Category image must be uploaded to Supabase Storage before saving.');
+    }
+
+    const toSave: Category = {
+      ...cat,
+      name: cat.name.trim(),
+      slug:
+        cat.slug.trim() ||
+        cat.name
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, '-')
+          .replace(/(^-|-$)/g, ''),
+      description: (cat.description || '').trim(),
+      imageUrl: normalizeMediaAssetUrl(cat.imageUrl, '/images/categories/skincare.jpg')
+    };
+
+    if (supabase && isSupabaseConfigured) {
+      const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(toSave.id);
+      const dbPayload: Record<string, any> = {
+        name: toSave.name,
+        slug: toSave.slug,
+        description: toSave.description,
+        image_url: toSave.imageUrl,
+        is_active: toSave.isActive,
+        display_order: toSave.displayOrder
+      };
+      if (isUuid) {
+        dbPayload.id = toSave.id;
+      }
+
+      const canDirectWrite = await this.hasVerifiedDirectSupabaseAdmin();
+      let persistedRow: any = null;
+      let directError: string | null = null;
+
+      if (canDirectWrite) {
+        const { data, error } = await supabase
+          .from('categories')
+          .upsert(dbPayload, { onConflict: isUuid ? 'id' : 'slug' })
+          .select('*')
+          .single();
+        if (!error && data) {
+          persistedRow = data;
+        } else if (error) {
+          directError = error.message;
+        }
+      }
+
+      if (!persistedRow) {
+        try {
+          const apiRes = await this.persistViaAdminApi<{ category?: any }>('save_category', {
+            category: {
+              ...toSave,
+              id: isUuid ? toSave.id : undefined
+            }
+          });
+          persistedRow = apiRes?.category || null;
+        } catch (apiErr: any) {
+          throw new Error(
+            directError
+              ? `${directError} — Server fallback failed: ${apiErr?.message || 'Unable to save category.'}`
+              : apiErr?.message || 'Unable to save category to Supabase.'
+          );
+        }
+      }
+
+      if (persistedRow?.id) {
+        toSave.id = persistedRow.id;
+        toSave.createdAt = persistedRow.created_at || toSave.createdAt;
+      }
+    }
+
     const list = this.getCategories();
-    const index = list.findIndex(c => c.id === cat.id);
+    const index = list.findIndex(c => c.id === cat.id || c.id === toSave.id || c.slug === toSave.slug);
     if (index >= 0) {
-      list[index] = cat;
+      list[index] = toSave;
     } else {
-      list.push(cat);
+      list.push(toSave);
     }
     this.set(STORAGE_KEYS.CATEGORIES, list);
-
-    // Sync to Supabase categories table if supabase is configured
-    if (supabase) {
-      Promise.resolve(
-        supabase
-          .from('categories')
-          .upsert(
-            {
-              name: cat.name,
-              slug: cat.slug,
-              description: cat.description,
-              image_url: cat.imageUrl,
-              is_active: cat.isActive,
-              display_order: cat.displayOrder
-            },
-            { onConflict: 'slug' }
-          )
-      )
-        .then(({ error }: any) => {
-          if (error) console.info('Supabase category sync note:', error.message);
-        })
-        .catch(() => {});
-    }
-
-    return cat;
+    return toSave;
   }
 
-  deleteCategory(id: string): void {
+  async deleteCategoryAsync(id: string): Promise<void> {
+    const existing = this.getCategories().find(c => c.id === id);
+
+    if (supabase && isSupabaseConfigured) {
+      const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
+      const canDirectWrite = await this.hasVerifiedDirectSupabaseAdmin();
+      let deletedDirect = false;
+      let directError: string | null = null;
+
+      if (canDirectWrite) {
+        const query = isUuid
+          ? supabase.from('categories').delete().eq('id', id)
+          : supabase.from('categories').delete().eq('slug', existing?.slug || id);
+        const { error } = await query;
+        if (!error) {
+          deletedDirect = true;
+        } else {
+          directError = error.message;
+        }
+      }
+
+      if (!deletedDirect) {
+        try {
+          await this.persistViaAdminApi('delete_category', {
+            id: isUuid ? id : undefined,
+            slug: existing?.slug || (isUuid ? '' : id)
+          });
+        } catch (apiErr: any) {
+          throw new Error(
+            directError
+              ? `${directError} — Server fallback failed: ${apiErr?.message || 'Unable to delete category.'}`
+              : apiErr?.message || 'Unable to delete category from Supabase.'
+          );
+        }
+      }
+    }
+
     const list = this.getCategories().filter(c => c.id !== id);
     this.set(STORAGE_KEYS.CATEGORIES, list);
   }
@@ -596,9 +812,10 @@ class StoreRepository {
     const raw = this.get<Product[]>(STORAGE_KEYS.PRODUCTS, INITIAL_PRODUCTS);
     return raw.map(p => ({
       ...p,
-      images: p.images && p.images.length > 0
-        ? p.images.map(img => normalizeImageUrl(img, '/images/products/avalon_eclat.jpg'))
-        : ['/images/products/avalon_eclat.jpg']
+      images:
+        p.images && p.images.length > 0
+          ? p.images.map(img => normalizeImageUrl(img, '/images/products/avalon_eclat.jpg'))
+          : ['/images/products/avalon_eclat.jpg']
     }));
   }
 
@@ -606,9 +823,11 @@ class StoreRepository {
     return this.getProducts().find(p => p.id === id || p.slug === id);
   }
 
-  saveProduct(prod: Product): Product {
-    const list = this.getProducts();
-    const index = list.findIndex(p => p.id === prod.id);
+  async saveProductAsync(prod: Product): Promise<Product> {
+    if (Array.isArray(prod.images) && prod.images.some(img => isNonPersistentMediaUrl(img))) {
+      throw new Error('Product images must be uploaded to Supabase Storage before saving.');
+    }
+
     const now = new Date().toISOString();
     const toSave: Product = {
       ...prod,
@@ -618,91 +837,149 @@ class StoreRepository {
           .toLowerCase()
           .replace(/[^a-z0-9]+/g, '-')
           .replace(/(^-|-$)/g, '')}-${Date.now().toString().slice(-4)}`,
+      images: (prod.images || []).filter(Boolean).map(img => normalizeMediaAssetUrl(img)),
       updatedAt: now,
       createdAt: prod.createdAt || now
     };
+
+    const categories = this.getCategories();
+    const matchedCat = categories.find(c => c.id === toSave.categoryId);
+
+    if (supabase && isSupabaseConfigured) {
+      const isUuidProd = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(toSave.id);
+      const isUuidCat = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(toSave.categoryId);
+
+      let resolvedCategoryId = isUuidCat ? toSave.categoryId : '';
+      if (!resolvedCategoryId && matchedCat?.slug) {
+        const { data: catRow } = await supabase
+          .from('categories')
+          .select('id')
+          .eq('slug', matchedCat.slug)
+          .maybeSingle();
+        if (catRow?.id) {
+          resolvedCategoryId = catRow.id;
+          toSave.categoryId = catRow.id;
+        }
+      }
+
+      const canDirectWrite = await this.hasVerifiedDirectSupabaseAdmin();
+      let persistedProductRow: any = null;
+      let directError: string | null = null;
+
+      if (canDirectWrite) {
+        const { data, error } = await supabase.rpc('save_product_with_images', {
+          p_id: isUuidProd ? toSave.id : null,
+          p_name: toSave.name,
+          p_slug: toSave.slug,
+          p_description: toSave.description,
+          p_price: toSave.price,
+          p_currency: toSave.currency || 'USD',
+          p_category_id: resolvedCategoryId || null,
+          p_category_slug: matchedCat?.slug || null,
+          p_sku: toSave.sku || '',
+          p_stock_quantity: toSave.stockQuantity,
+          p_is_available: toSave.isAvailable,
+          p_is_featured: toSave.isFeatured,
+          p_is_new_arrival: toSave.isNewArrival,
+          p_is_best_seller: toSave.isBestSeller,
+          p_brand: toSave.brand || null,
+          p_product_type: toSave.productType || null,
+          p_size_or_volume: toSave.sizeOrVolume || null,
+          p_specifications: toSave.specifications || null,
+          p_key_ingredients: toSave.keyIngredients || [],
+          p_features: toSave.features || [],
+          p_tags: toSave.tags || [],
+          p_images: toSave.images
+        });
+
+        if (!error && data?.id) {
+          persistedProductRow = data;
+        } else if (error) {
+          directError = error.message;
+        }
+      }
+
+      if (!persistedProductRow) {
+        try {
+          const apiRes = await this.persistViaAdminApi<{ product?: any }>('save_product', {
+            product: {
+              ...toSave,
+              id: isUuidProd ? toSave.id : undefined,
+              categoryId: resolvedCategoryId || undefined,
+              categorySlug: matchedCat?.slug || ''
+            }
+          });
+          persistedProductRow = apiRes?.product || null;
+        } catch (apiErr: any) {
+          throw new Error(
+            directError
+              ? `${directError} — Server fallback failed: ${apiErr?.message || 'Unable to save product.'}`
+              : apiErr?.message || 'Unable to save product to Supabase.'
+          );
+        }
+      }
+
+      if (persistedProductRow?.id) {
+        toSave.id = persistedProductRow.id;
+        if (persistedProductRow.category_id) {
+          toSave.categoryId = persistedProductRow.category_id;
+        }
+        if (Array.isArray(persistedProductRow.images) && persistedProductRow.images.length > 0) {
+          toSave.images = persistedProductRow.images;
+        }
+        toSave.createdAt = persistedProductRow.created_at || toSave.createdAt;
+        toSave.updatedAt = persistedProductRow.updated_at || toSave.updatedAt;
+      }
+    }
+
+    const list = this.getProducts();
+    const index = list.findIndex(p => p.id === prod.id || p.id === toSave.id || p.slug === toSave.slug);
     if (index >= 0) {
       list[index] = toSave;
     } else {
       list.unshift(toSave);
     }
     this.set(STORAGE_KEYS.PRODUCTS, list);
-
-    // Sync to Supabase products & product_images tables if configured
-    if (supabase) {
-      const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(toSave.categoryId);
-      const basePayload: Record<string, any> = {
-        name: toSave.name,
-        slug: toSave.slug,
-        description: toSave.description,
-        price: toSave.price,
-        currency: toSave.currency || 'USD',
-        sku: toSave.sku,
-        stock_quantity: toSave.stockQuantity,
-        is_available: toSave.isAvailable,
-        is_featured: toSave.isFeatured,
-        is_new_arrival: toSave.isNewArrival,
-        is_best_seller: toSave.isBestSeller
-      };
-      if (isUuid) {
-        basePayload.category_id = toSave.categoryId;
-      }
-
-      const extendedPayload: Record<string, any> = {
-        ...basePayload,
-        brand: toSave.brand || null,
-        product_type: toSave.productType || null,
-        size_or_volume: toSave.sizeOrVolume || null,
-        specifications: toSave.specifications || null,
-        key_ingredients: toSave.keyIngredients || [],
-        features: toSave.features || [],
-        tags: toSave.tags || []
-      };
-
-      const sb = supabase;
-      Promise.resolve(
-        sb
-          .from('products')
-          .upsert(extendedPayload, { onConflict: 'slug' })
-          .select('id')
-          .single()
-      )
-        .then(async ({ data, error }: any) => {
-          let productRow = data;
-          if (error && (error.message?.includes('column') || error.message?.includes('schema cache'))) {
-            const retry = await sb
-              .from('products')
-              .upsert(basePayload, { onConflict: 'slug' })
-              .select('id')
-              .single();
-            productRow = retry.data;
-            if (retry.error) {
-              console.info('Supabase product sync note:', retry.error.message);
-              return;
-            }
-          } else if (error) {
-            console.info('Supabase product sync note:', error.message);
-            return;
-          }
-          if (productRow?.id && toSave.images?.length > 0) {
-            await sb.from('product_images').delete().eq('product_id', productRow.id);
-            await sb.from('product_images').insert(
-              toSave.images.map((imgUrl, idx) => ({
-                product_id: productRow.id,
-                image_url: imgUrl,
-                alt_text: toSave.name,
-                display_order: idx
-              }))
-            );
-          }
-        })
-        .catch(() => {});
-    }
-
     return toSave;
   }
 
-  deleteProduct(id: string): void {
+  async deleteProductAsync(id: string): Promise<void> {
+    const existing = this.getProducts().find(p => p.id === id);
+
+    if (supabase && isSupabaseConfigured) {
+      const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
+      const canDirectWrite = await this.hasVerifiedDirectSupabaseAdmin();
+      let deletedDirect = false;
+      let directError: string | null = null;
+
+      if (canDirectWrite) {
+        const query = isUuid
+          ? supabase.from('products').delete().eq('id', id)
+          : supabase.from('products').delete().eq('slug', existing?.slug || id);
+        const { error } = await query;
+        if (!error) {
+          deletedDirect = true;
+        } else {
+          directError = error.message;
+        }
+      }
+
+      if (!deletedDirect) {
+        try {
+          await this.persistViaAdminApi('delete_product', {
+            id: isUuid ? id : undefined,
+            slug: existing?.slug || (isUuid ? '' : id)
+          });
+        } catch (apiErr: any) {
+          throw new Error(
+            directError
+              ? `${directError} — Server fallback failed: ${apiErr?.message || 'Unable to delete product.'}`
+              : apiErr?.message || 'Unable to delete product from Supabase.'
+          );
+        }
+      }
+    }
+
     const list = this.getProducts().filter(p => p.id !== id);
     this.set(STORAGE_KEYS.PRODUCTS, list);
   }
@@ -750,7 +1027,7 @@ class StoreRepository {
         .order('created_at', { ascending: false })
         .limit(50);
 
-      if (!error && Array.isArray(data) && data.length > 0) {
+      if (!error && Array.isArray(data)) {
         const mapped: BulkUploadHistoryEntry[] = data.map((row: any) => ({
           id: row.id,
           createdAt: row.created_at,
@@ -788,7 +1065,7 @@ class StoreRepository {
 
       const result: { categories?: Category[]; products?: Product[] } = {};
 
-      if (!catRes.error && Array.isArray(catRes.data) && catRes.data.length > 0) {
+      if (!catRes.error && Array.isArray(catRes.data)) {
         const mappedCats: Category[] = catRes.data.map((row: any) => ({
           id: row.id,
           name: row.name,
@@ -803,7 +1080,7 @@ class StoreRepository {
         result.categories = mappedCats;
       }
 
-      if (!prodRes.error && Array.isArray(prodRes.data) && prodRes.data.length > 0) {
+      if (!prodRes.error && Array.isArray(prodRes.data)) {
         const mappedProds: Product[] = prodRes.data.map((row: any) => {
           const imgs = Array.isArray(row.product_images)
             ? [...row.product_images]
@@ -1058,7 +1335,7 @@ class StoreRepository {
         .select('*, order_items(*)')
         .order('created_at', { ascending: false });
 
-      if (!error && Array.isArray(data) && data.length > 0) {
+      if (!error && Array.isArray(data)) {
         const mapped: Order[] = data.map((row: any) => ({
           id: row.id,
           orderReference: row.order_reference,
@@ -1100,36 +1377,48 @@ class StoreRepository {
     return localOrders;
   }
 
-  updateOrderStatus(orderId: string, status: Order['orderStatus'], paymentStatus?: Order['paymentStatus']): Order | undefined {
+  async updateOrderStatusAsync(
+    orderId: string,
+    status: Order['orderStatus'],
+    paymentStatus?: Order['paymentStatus']
+  ): Promise<Order | undefined> {
     const orders = this.getOrders();
     const index = orders.findIndex(o => o.id === orderId || o.orderReference === orderId);
-    if (index >= 0) {
-      orders[index].orderStatus = status;
+    if (index < 0) return undefined;
+
+    const target = orders[index];
+    if (supabase && isSupabaseConfigured) {
+      const updatePayload: Record<string, any> = { order_status: status };
       if (paymentStatus) {
-        orders[index].paymentStatus = paymentStatus;
-      }
-      orders[index].updatedAt = new Date().toISOString();
-      this.set(STORAGE_KEYS.ORDERS, orders);
-
-      // Sync status change to Supabase (requires authenticated NOVALUXE admin session)
-      if (supabase) {
-        const updatePayload: Record<string, any> = { order_status: status };
-        if (paymentStatus) {
-          updatePayload.payment_status = paymentStatus;
-        }
-        Promise.resolve(
-          supabase
-            .from('orders')
-            .update(updatePayload)
-            .eq('order_reference', orders[index].orderReference)
-        )
-          .then(() => {})
-          .catch(() => {});
+        updatePayload.payment_status = paymentStatus;
       }
 
-      return orders[index];
+      const canDirectWrite = await this.hasVerifiedDirectSupabaseAdmin();
+      let updatedDirect = false;
+      if (canDirectWrite) {
+        const { error } = await supabase
+          .from('orders')
+          .update(updatePayload)
+          .eq('order_reference', target.orderReference);
+        if (!error) updatedDirect = true;
+      }
+
+      if (!updatedDirect) {
+        await this.persistViaAdminApi('update_order_status', {
+          orderReference: target.orderReference,
+          orderStatus: status,
+          paymentStatus
+        });
+      }
     }
-    return undefined;
+
+    orders[index].orderStatus = status;
+    if (paymentStatus) {
+      orders[index].paymentStatus = paymentStatus;
+    }
+    orders[index].updatedAt = new Date().toISOString();
+    this.set(STORAGE_KEYS.ORDERS, orders);
+    return orders[index];
   }
 
   // Enquiries
@@ -1146,7 +1435,7 @@ class StoreRepository {
         .select('*')
         .order('created_at', { ascending: false });
 
-      if (!error && Array.isArray(data) && data.length > 0) {
+      if (!error && Array.isArray(data)) {
         const mapped: Enquiry[] = data.map((row: any) => ({
           id: row.id,
           fullName: row.full_name,

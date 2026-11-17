@@ -7,6 +7,7 @@ import {
   isAbortError,
   readJsonBody
 } from '../_lib/canonicalCatalog';
+import { applyCors } from '../_lib/cors';
 
 interface VercelRequest extends IncomingMessage {
   body?: any;
@@ -39,7 +40,7 @@ export async function processOrderLookup(
   }
 
   const sb = getSupabaseServerConfig(envSource);
-  if (!sb.isConfigured) {
+  if (!sb.url || !sb.hasServiceRole || !sb.serviceRoleKey) {
     return {
       status: 503,
       body: {
@@ -59,8 +60,8 @@ export async function processOrderLookup(
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          apikey: sb.apiKey,
-          Authorization: `Bearer ${sb.apiKey}`
+          apikey: sb.serviceRoleKey,
+          Authorization: `Bearer ${sb.serviceRoleKey}`
         },
         body: JSON.stringify({
           p_order_reference: orderReference,
@@ -144,16 +145,8 @@ export async function processOrderLookup(
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  res.setHeader('Access-Control-Allow-Credentials', 'true');
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'POST,OPTIONS');
-  res.setHeader(
-    'Access-Control-Allow-Headers',
-    'X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version, Authorization'
-  );
-
-  if (req.method === 'OPTIONS') {
-    return res.status(200).end();
+  if (applyCors(req, res, 'POST,OPTIONS') === 'ended') {
+    return;
   }
 
   if (req.method !== 'POST') {

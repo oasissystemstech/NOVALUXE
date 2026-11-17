@@ -21,12 +21,27 @@ import {
   AlertCircle,
   Sparkles,
   Film,
-  Eye
+  Eye,
+  Monitor,
+  Smartphone,
+  Ban,
+  Image as ImageIcon
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useSettings } from '../context/SettingsContext';
 import { store } from '../lib/store';
-import { Product, Category, Order, OrderStatus, PaymentStatus, Enquiry, PromoFrequency } from '../types';
+import {
+  Product,
+  Category,
+  Order,
+  OrderStatus,
+  PaymentStatus,
+  Enquiry,
+  PromoFrequency,
+  PromoDisplayMode,
+  PromoDesktopBehavior,
+  PromoMobileBehavior
+} from '../types';
 import { NovaluxeLogo } from '../components/NovaluxeLogo';
 import { testSupabaseConnection, supabaseUrl } from '../lib/supabase';
 import { ProductImageUploader } from '../components/ProductImageUploader';
@@ -35,15 +50,30 @@ import { ThemeToggleButton } from '../components/ThemeToggleButton';
 import { AIBulkProductUploader } from '../components/AIBulkProductUploader';
 import { PromotionalMediaUploader } from '../components/PromotionalMediaUploader';
 import { PromotionalFlyerModal } from '../components/PromotionalFlyerModal';
-import { handleImageError } from '../lib/imageUtils';
+import { DEFAULT_HERO_IMAGE, handleImageError } from '../lib/imageUtils';
+import {
+  inferVideoMimeType,
+  isDeadDefaultPromoVideo,
+  normalizePromoCampaign
+} from '../lib/promoUtils';
 
 interface AdminDashboardPageProps {
   onBackToStore: () => void;
 }
 
 export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({ onBackToStore }) => {
-  const { isAdmin, logout } = useAuth();
-  const { settings, updateSettings, categories, refreshCategories, products, refreshProducts, resetAll } = useSettings();
+  const { isAdmin, adminUser, logout, persistenceStatus, recheckPersistenceStatus } = useAuth();
+  const isSuperAdmin = adminUser?.role === 'super_admin';
+  const {
+    settings,
+    updateSettings,
+    categories,
+    refreshCategories,
+    products,
+    refreshProducts,
+    refreshAllFromSupabase,
+    resetAll
+  } = useSettings();
 
   const [activeTab, setActiveTab] = useState<
     | 'overview'
@@ -84,13 +114,26 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({ onBackTo
   const [testingConnection, setTestingConnection] = useState(false);
   const [connectionResult, setConnectionResult] = useState<{ success: boolean; message: string } | null>(null);
 
-  // Promo live preview modal
+  // Promo live preview modal & viewport toggle
   const [isPromoPreviewOpen, setIsPromoPreviewOpen] = useState(false);
+  const [promoPreviewViewport, setPromoPreviewViewport] = useState<'desktop' | 'mobile'>('desktop');
+  const [isUploadingHeroImage, setIsUploadingHeroImage] = useState(false);
+  const [isUploadingPromoMedia, setIsUploadingPromoMedia] = useState(false);
+
+  // Explicit persistence state & error banners
+  const [isSavingProduct, setIsSavingProduct] = useState(false);
+  const [productSaveError, setProductSaveError] = useState<string | null>(null);
+  const [isSavingCategory, setIsSavingCategory] = useState(false);
+  const [categorySaveError, setCategorySaveError] = useState<string | null>(null);
+  const [isSavingSettings, setIsSavingSettings] = useState(false);
+  const [settingsError, setSettingsError] = useState<string | null>(null);
+  const [adminActionError, setAdminActionError] = useState<string | null>(null);
 
   const handleTestSupabase = async () => {
     setTestingConnection(true);
     const result = await testSupabaseConnection();
     setConnectionResult(result);
+    await recheckPersistenceStatus().catch(() => {});
     setTestingConnection(false);
   };
 
@@ -107,6 +150,7 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({ onBackTo
     refreshCategories();
     setOrders(store.getOrders());
     setEnquiries(store.getEnquiries());
+    refreshAllFromSupabase().catch(() => {});
     if (isAdmin) {
       store.syncAdminOrdersFromSupabase().then(setOrders).catch(() => {});
       store.syncAdminEnquiriesFromSupabase().then(setEnquiries).catch(() => {});
@@ -136,59 +180,106 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({ onBackTo
   const totalRevenue = orders.reduce((sum, o) => sum + o.totalAmount, 0);
 
   // Order status updater
-  const handleUpdateOrderStatus = (orderId: string, status: OrderStatus, paymentStatus?: PaymentStatus) => {
-    store.updateOrderStatus(orderId, status, paymentStatus);
-    const updated = store.getOrders();
-    setOrders(updated);
-    if (selectedOrder && selectedOrder.id === orderId) {
-      setSelectedOrder(updated.find(o => o.id === orderId) || null);
+  const handleUpdateOrderStatus = async (orderId: string, status: OrderStatus, paymentStatus?: PaymentStatus) => {
+    setAdminActionError(null);
+    try {
+      await store.updateOrderStatusAsync(orderId, status, paymentStatus);
+      const updated = store.getOrders();
+      setOrders(updated);
+      if (selectedOrder && selectedOrder.id === orderId) {
+        setSelectedOrder(updated.find(o => o.id === orderId) || null);
+      }
+    } catch (err: any) {
+      setAdminActionError(err?.message || 'Unable to update order status in Supabase.');
     }
   };
 
   // Save product
-  const handleSaveProduct = (e: React.FormEvent) => {
+  const handleSaveProduct = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingProduct) return;
 
-    store.saveProduct(editingProduct);
-    refreshProducts();
-    setIsProductModalOpen(false);
-    setEditingProduct(null);
+    setProductSaveError(null);
+    setIsSavingProduct(true);
+    try {
+      await store.saveProductAsync(editingProduct);
+      await refreshAllFromSupabase().catch(() => {});
+      refreshProducts();
+      setIsProductModalOpen(false);
+      setEditingProduct(null);
+    } catch (err: any) {
+      setProductSaveError(err?.message || 'Unable to save product to Supabase. Check admin storage/DB authorization.');
+    } finally {
+      setIsSavingProduct(false);
+    }
   };
 
   // Delete product
-  const handleDeleteProduct = (id: string) => {
-    if (confirm('Are you sure you want to delete this product?')) {
-      store.deleteProduct(id);
+  const handleDeleteProduct = async (id: string) => {
+    if (!confirm('Are you sure you want to delete this product?')) return;
+    setAdminActionError(null);
+    try {
+      await store.deleteProductAsync(id);
+      await refreshAllFromSupabase().catch(() => {});
       refreshProducts();
+    } catch (err: any) {
+      setAdminActionError(err?.message || 'Unable to delete product from Supabase.');
     }
   };
 
   // Save category
-  const handleSaveCategory = (e: React.FormEvent) => {
+  const handleSaveCategory = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingCategory) return;
 
-    store.saveCategory(editingCategory);
-    refreshCategories();
-    setIsCategoryModalOpen(false);
-    setEditingCategory(null);
+    setCategorySaveError(null);
+    setIsSavingCategory(true);
+    try {
+      await store.saveCategoryAsync(editingCategory);
+      await refreshAllFromSupabase().catch(() => {});
+      refreshCategories();
+      setIsCategoryModalOpen(false);
+      setEditingCategory(null);
+    } catch (err: any) {
+      setCategorySaveError(err?.message || 'Unable to save category to Supabase. Check admin storage/DB authorization.');
+    } finally {
+      setIsSavingCategory(false);
+    }
   };
 
   // Delete category
-  const handleDeleteCategory = (id: string) => {
-    if (confirm('Are you sure you want to delete this category?')) {
-      store.deleteCategory(id);
+  const handleDeleteCategory = async (id: string) => {
+    if (!confirm('Are you sure you want to delete this category?')) return;
+    setAdminActionError(null);
+    try {
+      await store.deleteCategoryAsync(id);
+      await refreshAllFromSupabase().catch(() => {});
       refreshCategories();
+    } catch (err: any) {
+      setAdminActionError(err?.message || 'Unable to delete category from Supabase.');
     }
   };
 
   // Save settings
-  const handleSaveSettings = (e: React.FormEvent) => {
+  const handleSaveSettings = async (e: React.FormEvent) => {
     e.preventDefault();
-    updateSettings(settingsForm);
-    setSettingsSaved(true);
-    setTimeout(() => setSettingsSaved(false), 2500);
+    setSettingsSaved(false);
+    setSettingsError(null);
+    setIsSavingSettings(true);
+    try {
+      const normalizedPayload = {
+        ...settingsForm,
+        promoCampaign: normalizePromoCampaign(settingsForm.promoCampaign)
+      };
+      const saved = await updateSettings(normalizedPayload);
+      setSettingsForm(saved);
+      setSettingsSaved(true);
+      setTimeout(() => setSettingsSaved(false), 3000);
+    } catch (err: any) {
+      setSettingsError(err?.message || 'Failed to publish settings to Supabase.');
+    } finally {
+      setIsSavingSettings(false);
+    }
   };
 
   // Filtered orders
@@ -231,15 +322,25 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({ onBackTo
     return Array.from(map.values());
   }, [orders]);
 
-  const promo = settingsForm.promoCampaign;
-  const updatePromoField = <K extends keyof typeof promo>(key: K, value: (typeof promo)[K]) => {
+  const promo = normalizePromoCampaign(settingsForm.promoCampaign);
+  const updatePromoPatch = (patch: Partial<typeof promo>) => {
     setSettingsForm(prev => ({
       ...prev,
-      promoCampaign: {
+      promoCampaign: normalizePromoCampaign({
         ...prev.promoCampaign,
-        [key]: value
-      }
+        ...patch
+      })
     }));
+  };
+  const updatePromoField = <K extends keyof typeof promo>(key: K, value: (typeof promo)[K]) => {
+    updatePromoPatch({ [key]: value });
+  };
+  const handleSelectDisplayMode = (mode: PromoDisplayMode) => {
+    updatePromoPatch({
+      displayMode: mode,
+      enabled: mode !== 'disabled',
+      mediaType: mode === 'image' ? 'image' : 'video'
+    });
   };
 
   const SQL_MIGRATION_TEXT = `-- ==============================================================================
@@ -430,12 +531,15 @@ $$;
 
 -- Deprecated order_is_pending_checkout(uuid) has been removed.
 -- Direct anonymous INSERT on customers, orders, and order_items is revoked.
+-- Backend RPCs (create_checkout_order, lookup_order_by_reference, admin_login_rate_limit)
+-- are executable ONLY by service_role.
 -- Run the complete non-destructive hardening script in:
 --   supabase/migrations/20261116_security_audit_and_hardening.sql
+--   supabase/migrations/20261118_security_and_integrity_hardening.sql
 -- Or the complete fresh schema in:
 --   supabase/schema.sql
--- (Includes create_checkout_order, lookup_order_by_reference, pg_policies audit,
---  storage.objects bucket hardening, and verified /images/... asset migration.)
+-- (Includes approved media host allowlist, request_fingerprint idempotency, atomic DB rate limits,
+--  save_product_with_images, site_settings super_admin RBAC, and storage path-prefix rules.)
 -- Remember to register your Supabase Auth Admin User UUID in public.admin_profiles:
 --   insert into public.admin_profiles (user_id, role) values ('<AUTH-USER-UUID>', 'super_admin')
 --   on conflict (user_id) do update set role = excluded.role;`;
@@ -510,7 +614,12 @@ $$;
             return (
               <button
                 key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
+                onClick={() => {
+                  setActiveTab(tab.id);
+                  setSettingsSaved(false);
+                  setSettingsError(null);
+                  setAdminActionError(null);
+                }}
                 className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-medium transition-colors cursor-pointer ${
                   isActive
                     ? 'bg-white dark:bg-[#25183B] text-[#8B42C9] dark:text-[#F5D061] font-semibold border border-[#8B42C9]/30 dark:border-[#482E70]/60 shadow-xs dark:shadow-none'
@@ -542,7 +651,33 @@ $$;
         </aside>
 
         {/* Content Panel */}
-        <main className="flex-1 p-6 sm:p-8 overflow-y-auto">
+        <main className="flex-1 p-6 sm:p-8 overflow-y-auto space-y-5">
+          {persistenceStatus.diagnostic && (
+            <div className="p-3.5 rounded-2xl bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-700/60 text-amber-900 dark:text-amber-200 text-xs flex items-start gap-2.5">
+              <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-amber-600 dark:text-amber-400" />
+              <div className="space-y-1">
+                <p className="font-semibold">Remote Supabase Admin Sync Notice</p>
+                <p className="text-[11px] leading-relaxed">{persistenceStatus.diagnostic}</p>
+              </div>
+            </div>
+          )}
+
+          {adminActionError && (
+            <div className="p-3.5 rounded-2xl bg-red-50 dark:bg-red-950/50 border border-red-300 dark:border-red-700/60 text-red-700 dark:text-red-200 text-xs flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0" />
+                <span>{adminActionError}</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setAdminActionError(null)}
+                className="text-red-700 dark:text-red-200 hover:opacity-75 cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          )}
+
           {/* TAB 1: OVERVIEW */}
           {activeTab === 'overview' && (
             <div className="space-y-8">
@@ -658,14 +793,15 @@ $$;
                   </button>
                   <button
                     onClick={() => {
+                      setProductSaveError(null);
                       setEditingProduct({
-                        id: `prod-${Date.now()}`,
+                        id: '',
                         name: '',
                         slug: '',
                         description: '',
                         price: 25.0,
                         currency: 'USD',
-                        categoryId: categories[0]?.id || 'cat-skincare',
+                        categoryId: categories[0]?.id || '',
                         sku: `NVL-${Math.floor(100 + Math.random() * 900)}`,
                         stockQuantity: 20,
                         isAvailable: true,
@@ -758,6 +894,7 @@ $$;
                             <td className="p-4 text-right space-x-2">
                               <button
                                 onClick={() => {
+                                  setProductSaveError(null);
                                   setEditingProduct({ ...p });
                                   setIsProductModalOpen(true);
                                 }}
@@ -799,8 +936,9 @@ $$;
                 </div>
                 <button
                   onClick={() => {
+                    setCategorySaveError(null);
                     setEditingCategory({
-                      id: `cat-${Date.now()}`,
+                      id: '',
                       name: '',
                       slug: '',
                       description: '',
@@ -845,6 +983,7 @@ $$;
                       <div className="pt-3 border-t border-[#E4DDD0] dark:border-[#241933] flex justify-end gap-2">
                         <button
                           onClick={() => {
+                            setCategorySaveError(null);
                             setEditingCategory({ ...c });
                             setIsCategoryModalOpen(true);
                           }}
@@ -1065,7 +1204,7 @@ $$;
                   Homepage & Brand Content
                 </h1>
                 <p className="text-xs text-[#746B78] dark:text-[#9C8EB2]">
-                  Edit announcement bar, hero section, and social media handles.
+                  Edit announcement bar, hero banner image & copy, and social media handles.
                 </p>
               </div>
 
@@ -1076,7 +1215,14 @@ $$;
                 {settingsSaved && (
                   <div className="p-3 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-500/50 text-emerald-700 dark:text-emerald-300 text-xs flex items-center gap-2">
                     <Check className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
-                    <span>Content updated successfully!</span>
+                    <span>Content published to Supabase and live across all browsers!</span>
+                  </div>
+                )}
+
+                {settingsError && (
+                  <div className="p-3 rounded-xl bg-red-50 dark:bg-red-950/50 border border-red-300 dark:border-red-700/60 text-red-700 dark:text-red-200 text-xs flex items-start gap-2">
+                    <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                    <span>{settingsError}</span>
                   </div>
                 )}
 
@@ -1101,6 +1247,33 @@ $$;
                   <label htmlFor="announcementToggle" className="text-xs text-[#524858] dark:text-[#C5B9D8]">
                     Show Announcement Bar
                   </label>
+                </div>
+
+                {/* Hero Banner Image Uploader */}
+                <div className="space-y-2.5 pt-3 border-t border-[#E4DDD0] dark:border-[#241933]">
+                  <label className="text-xs font-semibold text-[#524858] dark:text-[#C5B9D8]">
+                    Homepage Hero Background Image
+                  </label>
+                  {settingsForm.heroImage && (
+                    <div className="rounded-xl overflow-hidden border border-[#E4DDD0] dark:border-[#34244C] h-36 bg-[#FAF8F4] dark:bg-[#1A1227]">
+                      <img
+                        src={settingsForm.heroImage}
+                        alt="Homepage Hero Preview"
+                        onError={e => handleImageError(e, DEFAULT_HERO_IMAGE)}
+                        className="w-full h-full object-cover"
+                      />
+                    </div>
+                  )}
+                  <PromotionalMediaUploader
+                    mediaType="image"
+                    folder="hero"
+                    mediaUrl={settingsForm.heroImage || ''}
+                    buttonLabel="Upload Hero Image"
+                    placeholder="/images/hero/hero_beauty_cosmetics.jpg or https://..."
+                    helperText="Uploaded to Supabase Storage (promotional-assets/hero) so it updates across all browsers."
+                    onMediaChange={url => setSettingsForm({ ...settingsForm, heroImage: url })}
+                    onUploadStateChange={setIsUploadingHeroImage}
+                  />
                 </div>
 
                 <div className="space-y-1.5 pt-3 border-t border-[#E4DDD0] dark:border-[#241933]">
@@ -1153,121 +1326,310 @@ $$;
                   />
                 </div>
 
+                {!isSuperAdmin && (
+                  <div className="p-3 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-700/60 text-amber-900 dark:text-amber-200 text-xs flex items-start gap-2">
+                    <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                    <span>
+                      Your account role is <strong>admin</strong>. Only <strong>super_admin</strong> accounts can publish changes to global homepage content and site settings.
+                    </span>
+                  </div>
+                )}
+
                 <button
                   type="submit"
-                  className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-[#8B42C9] to-[#C99A35] dark:from-[#A855F7] dark:to-[#CA8A04] text-white dark:text-[#0A0710] font-semibold text-xs uppercase tracking-wider cursor-pointer"
+                  disabled={!isSuperAdmin || isSavingSettings || isUploadingHeroImage}
+                  className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-[#8B42C9] to-[#C99A35] dark:from-[#A855F7] dark:to-[#CA8A04] text-white dark:text-[#0A0710] font-semibold text-xs uppercase tracking-wider cursor-pointer disabled:opacity-50 flex items-center gap-2"
                 >
-                  Save Homepage Content
+                  {isSavingSettings && <RefreshCw className="w-3.5 h-3.5 animate-spin" />}
+                  <span>{isSavingSettings ? 'Publishing...' : 'Save Homepage Content'}</span>
                 </button>
               </form>
             </div>
           )}
 
-          {/* TAB: PROMOTIONAL FLYER / VIDEO POP-UP */}
+          {/* TAB: WEBSITE LOADING MEDIA SELECTOR / PROMOTIONAL POP-UP */}
           {activeTab === 'promotions' && (
-            <div className="max-w-3xl space-y-6">
+            <div className="max-w-4xl space-y-6">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                 <div>
                   <h1 className="text-2xl font-serif font-bold text-[#211B25] dark:text-[#F3EFEA]">
-                    Promotional Pop-Up Campaign
+                    Website Loading Media Selector
                   </h1>
                   <p className="text-xs text-[#746B78] dark:text-[#9C8EB2]">
-                    Manage the automated luxury promotional flyer or video pop-up displayed on the homepage.
+                    Choose whether visitors see an image, a video, or no promotional media when loading the website across desktop and mobile.
                   </p>
                 </div>
                 <button
                   type="button"
                   onClick={() => setIsPromoPreviewOpen(true)}
-                  className="px-4 py-2.5 rounded-xl bg-white dark:bg-[#1A1227] border border-[#E4DDD0] dark:border-[#34244C] text-[#8B42C9] dark:text-[#F5D061] text-xs font-semibold flex items-center gap-2 hover:bg-[#F2EBDD] dark:hover:bg-[#251A38] transition-colors cursor-pointer shrink-0"
+                  disabled={promo.displayMode === 'disabled'}
+                  className="px-4 py-2.5 rounded-xl bg-white dark:bg-[#1A1227] border border-[#E4DDD0] dark:border-[#34244C] text-[#8B42C9] dark:text-[#F5D061] text-xs font-semibold flex items-center gap-2 hover:bg-[#F2EBDD] dark:hover:bg-[#251A38] transition-colors cursor-pointer shrink-0 disabled:opacity-40"
                 >
                   <Eye className="w-4 h-4" />
-                  <span>Preview Pop-Up</span>
+                  <span>Preview Modal ({promoPreviewViewport === 'mobile' ? 'Mobile' : 'Desktop'})</span>
                 </button>
               </div>
 
               <form
                 onSubmit={handleSaveSettings}
-                className="bg-white dark:bg-[#120D1B] rounded-2xl border border-[#E4DDD0] dark:border-[#261B36] p-6 space-y-5 shadow-xs dark:shadow-none"
+                className="bg-white dark:bg-[#120D1B] rounded-2xl border border-[#E4DDD0] dark:border-[#261B36] p-6 space-y-6 shadow-xs dark:shadow-none"
               >
                 {settingsSaved && (
                   <div className="p-3 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-500/50 text-emerald-700 dark:text-emerald-300 text-xs flex items-center gap-2">
                     <Check className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
-                    <span>Promotional campaign settings saved!</span>
+                    <span>Website loading media configuration published to Supabase!</span>
                   </div>
                 )}
 
-                {/* Enable/Disable Campaign */}
-                <div className="flex items-center justify-between p-4 rounded-xl bg-[#FAF8F4] dark:bg-[#1A1227] border border-[#E4DDD0] dark:border-[#34244C]">
-                  <div>
-                    <p className="text-xs font-semibold text-[#211B25] dark:text-[#F3EFEA]">Enable Homepage Pop-Up</p>
-                    <p className="text-[11px] text-[#746B78] dark:text-[#9C8EB2]">
-                      Automatically present this promotional flyer when visitors open the storefront homepage.
-                    </p>
+                {settingsError && (
+                  <div className="p-3 rounded-xl bg-red-50 dark:bg-red-950/50 border border-red-300 dark:border-red-700/60 text-red-700 dark:text-red-200 text-xs flex items-start gap-2">
+                    <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                    <span>{settingsError}</span>
                   </div>
-                  <label className="inline-flex items-center gap-2 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={promo.enabled}
-                      onChange={e => updatePromoField('enabled', e.target.checked)}
-                      className="w-4 h-4 rounded text-[#8B42C9] dark:text-[#A855F7]"
-                    />
-                    <span className="text-xs font-semibold text-[#211B25] dark:text-[#F3EFEA]">
-                      {promo.enabled ? 'Active' : 'Disabled'}
-                    </span>
-                  </label>
-                </div>
+                )}
 
-                {/* Media Type Switcher */}
-                <div className="space-y-1.5">
-                  <label className="text-xs font-semibold text-[#524858] dark:text-[#C5B9D8]">Promotional Media Format</label>
-                  <div className="grid grid-cols-2 gap-3">
-                    <button
-                      type="button"
-                      onClick={() => updatePromoField('mediaType', 'video')}
-                      className={`py-2.5 px-4 rounded-xl border text-xs font-semibold cursor-pointer transition-colors ${
-                        promo.mediaType === 'video'
-                          ? 'bg-[#8B42C9]/10 dark:bg-[#25183B] border-[#8B42C9] dark:border-[#A855F7] text-[#8B42C9] dark:text-[#F5D061]'
-                          : 'bg-[#FAF8F4] dark:bg-[#1A1227] border-[#E4DDD0] dark:border-[#34244C] text-[#746B78] dark:text-[#9C8EB2]'
-                      }`}
-                    >
-                      Promotional Video (.mp4 / .webm)
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => updatePromoField('mediaType', 'image')}
-                      className={`py-2.5 px-4 rounded-xl border text-xs font-semibold cursor-pointer transition-colors ${
-                        promo.mediaType === 'image'
-                          ? 'bg-[#8B42C9]/10 dark:bg-[#25183B] border-[#8B42C9] dark:border-[#A855F7] text-[#8B42C9] dark:text-[#F5D061]'
-                          : 'bg-[#FAF8F4] dark:bg-[#1A1227] border-[#E4DDD0] dark:border-[#34244C] text-[#746B78] dark:text-[#9C8EB2]'
-                      }`}
-                    >
-                      Static Flyer Image (.jpg / .png / .webp)
-                    </button>
-                  </div>
-                </div>
-
-                {/* Media Uploader */}
-                <PromotionalMediaUploader
-                  mediaType={promo.mediaType}
-                  mediaUrl={promo.mediaUrl}
-                  onMediaChange={url => updatePromoField('mediaUrl', url)}
-                />
-
-                {/* Poster / Fallback Image URL */}
-                <div className="space-y-1.5">
+                {/* 3-MODE WEBSITE LOADING SELECTOR */}
+                <div className="space-y-2">
                   <label className="text-xs font-semibold text-[#524858] dark:text-[#C5B9D8]">
-                    Poster / Fallback Image URL
+                    Loading Media Display Mode
                   </label>
-                  <input
-                    type="text"
-                    value={promo.posterUrl || ''}
-                    onChange={e => updatePromoField('posterUrl', e.target.value)}
-                    placeholder="/images/hero/hero_beauty_cosmetics.jpg"
-                    className={inputClass}
-                  />
-                  <p className="text-[11px] text-[#746B78] dark:text-[#9C8EB2]">
-                    Displayed while video buffers or automatically used if a video file is unavailable.
-                  </p>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <button
+                      type="button"
+                      onClick={() => handleSelectDisplayMode('image')}
+                      className={`p-3.5 rounded-xl border text-left transition-colors cursor-pointer flex items-start gap-3 ${
+                        promo.displayMode === 'image'
+                          ? 'bg-[#8B42C9]/10 dark:bg-[#25183B] border-[#8B42C9] dark:border-[#A855F7] text-[#8B42C9] dark:text-[#F5D061]'
+                          : 'bg-[#FAF8F4] dark:bg-[#1A1227] border-[#E4DDD0] dark:border-[#34244C] text-[#524858] dark:text-[#9C8EB2]'
+                      }`}
+                    >
+                      <ImageIcon className="w-4 h-4 shrink-0 mt-0.5" />
+                      <div>
+                        <p className="text-xs font-bold uppercase tracking-wide">Image Mode</p>
+                        <p className="text-[11px] opacity-80 mt-0.5">Display a static luxury promotional image.</p>
+                      </div>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => handleSelectDisplayMode('video')}
+                      className={`p-3.5 rounded-xl border text-left transition-colors cursor-pointer flex items-start gap-3 ${
+                        promo.displayMode === 'video'
+                          ? 'bg-[#8B42C9]/10 dark:bg-[#25183B] border-[#8B42C9] dark:border-[#A855F7] text-[#8B42C9] dark:text-[#F5D061]'
+                          : 'bg-[#FAF8F4] dark:bg-[#1A1227] border-[#E4DDD0] dark:border-[#34244C] text-[#524858] dark:text-[#9C8EB2]'
+                      }`}
+                    >
+                      <Film className="w-4 h-4 shrink-0 mt-0.5" />
+                      <div>
+                        <p className="text-xs font-bold uppercase tracking-wide">Video Mode</p>
+                        <p className="text-[11px] opacity-80 mt-0.5">Play promotional video on desktop &amp; mobile.</p>
+                      </div>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => handleSelectDisplayMode('disabled')}
+                      className={`p-3.5 rounded-xl border text-left transition-colors cursor-pointer flex items-start gap-3 ${
+                        promo.displayMode === 'disabled'
+                          ? 'bg-red-50 dark:bg-red-950/40 border-red-500 text-red-700 dark:text-red-300'
+                          : 'bg-[#FAF8F4] dark:bg-[#1A1227] border-[#E4DDD0] dark:border-[#34244C] text-[#524858] dark:text-[#9C8EB2]'
+                      }`}
+                    >
+                      <Ban className="w-4 h-4 shrink-0 mt-0.5" />
+                      <div>
+                        <p className="text-xs font-bold uppercase tracking-wide">Disabled Mode</p>
+                        <p className="text-[11px] opacity-80 mt-0.5">Do not show promotional media on load.</p>
+                      </div>
+                    </button>
+                  </div>
+                </div>
+
+                {/* IMAGE MODE MEDIA UPLOAD */}
+                {promo.displayMode === 'image' && (
+                  <div className="space-y-2 p-4 rounded-2xl bg-[#FAF8F4] dark:bg-[#160F24] border border-[#E4DDD0] dark:border-[#302149]">
+                    <label className="text-xs font-semibold text-[#211B25] dark:text-[#F3EFEA]">
+                      Promotional Image Asset
+                    </label>
+                    <PromotionalMediaUploader
+                      mediaType="image"
+                      folder="promotions/images"
+                      mediaUrl={promo.imageUrl || ''}
+                      buttonLabel="Upload Promo Image"
+                      placeholder="/images/hero/hero_beauty_cosmetics.jpg or https://..."
+                      onMediaChange={url => updatePromoPatch({ imageUrl: url, mediaUrl: url })}
+                      onUploadStateChange={setIsUploadingPromoMedia}
+                    />
+                  </div>
+                )}
+
+                {/* VIDEO MODE MEDIA + POSTER UPLOADERS */}
+                {promo.displayMode === 'video' && (
+                  <div className="space-y-4 p-4 rounded-2xl bg-[#FAF8F4] dark:bg-[#160F24] border border-[#E4DDD0] dark:border-[#302149]">
+                    {(!promo.videoUrl || isDeadDefaultPromoVideo(promo.videoUrl)) && (
+                      <div className="p-3 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-700/60 text-amber-800 dark:text-amber-200 text-xs flex items-start gap-2">
+                        <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                        <span>
+                          No promotional video file is uploaded yet. Upload an H.264 MP4 or WebM video below and click Save &amp; Publish. Until a valid video is uploaded, visitors see the poster thumbnail.
+                        </span>
+                      </div>
+                    )}
+
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-semibold text-[#211B25] dark:text-[#F3EFEA]">
+                        Promotional Video Asset (Desktop &amp; Mobile)
+                      </label>
+                      <PromotionalMediaUploader
+                        mediaType="video"
+                        folder="promotions/videos"
+                        mediaUrl={promo.videoUrl || ''}
+                        buttonLabel="Upload Promo Video"
+                        placeholder="https://.../novaluxe-promo.mp4"
+                        onMediaChange={url => updatePromoPatch({ videoUrl: url, mediaUrl: url })}
+                        onUploadStateChange={setIsUploadingPromoMedia}
+                      />
+                    </div>
+
+                    <div className="space-y-1.5 pt-3 border-t border-[#E4DDD0] dark:border-[#2C1E42]">
+                      <label className="text-xs font-semibold text-[#524858] dark:text-[#C5B9D8]">
+                        Video Poster / Thumbnail Image
+                      </label>
+                      <PromotionalMediaUploader
+                        mediaType="image"
+                        folder="promotions/posters"
+                        mediaUrl={promo.posterUrl || ''}
+                        buttonLabel="Upload Poster"
+                        placeholder="/images/hero/hero_beauty_cosmetics.jpg"
+                        helperText="Shown immediately while the video buffers or if a device cannot decode the video stream."
+                        onMediaChange={url => updatePromoField('posterUrl', url)}
+                        onUploadStateChange={setIsUploadingPromoMedia}
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {promo.displayMode === 'disabled' && (
+                  <div className="p-4 rounded-2xl bg-[#FAF8F4] dark:bg-[#160F24] border border-[#E4DDD0] dark:border-[#302149] text-xs text-[#524858] dark:text-[#C5B9D8]">
+                    Promotional loading pop-up is currently disabled. Your uploaded promotional image and video URLs are safely preserved if you re-enable them later.
+                  </div>
+                )}
+
+                {/* DESKTOP & MOBILE DISPLAY BEHAVIOR CONTROLS */}
+                {promo.displayMode !== 'disabled' && (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-3 border-t border-[#E4DDD0] dark:border-[#241933]">
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-semibold text-[#524858] dark:text-[#C5B9D8] flex items-center gap-1.5">
+                        <Monitor className="w-3.5 h-3.5 text-[#8B42C9] dark:text-[#A855F7]" />
+                        <span>Desktop Display Behavior</span>
+                      </label>
+                      <select
+                        value={promo.desktopBehavior || 'autoplay_muted'}
+                        onChange={e => updatePromoField('desktopBehavior', e.target.value as PromoDesktopBehavior)}
+                        className={inputClass}
+                      >
+                        <option value="autoplay_muted">Autoplay Muted (Default)</option>
+                        <option value="click_to_play">Click to Play Video</option>
+                        <option value="hide">Hide on Desktop</option>
+                      </select>
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-semibold text-[#524858] dark:text-[#C5B9D8] flex items-center gap-1.5">
+                        <Smartphone className="w-3.5 h-3.5 text-[#C99A35] dark:text-[#F5D061]" />
+                        <span>Mobile Display Behavior</span>
+                      </label>
+                      <select
+                        value={promo.mobileBehavior || 'autoplay_muted'}
+                        onChange={e => updatePromoField('mobileBehavior', e.target.value as PromoMobileBehavior)}
+                        className={inputClass}
+                      >
+                        <option value="autoplay_muted">Autoplay Muted + Tap-to-Play Fallback (Recommended)</option>
+                        <option value="click_to_play">Show Poster with Tap to Play Video</option>
+                        <option value="poster_fallback">Show Poster Image Only on Mobile</option>
+                        <option value="hide">Hide on Mobile</option>
+                      </select>
+                    </div>
+                  </div>
+                )}
+
+                {/* INLINE LIVE PREVIEW (DESKTOP / MOBILE SWITCHER) */}
+                <div className="space-y-3 pt-3 border-t border-[#E4DDD0] dark:border-[#241933]">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-xs font-semibold text-[#524858] dark:text-[#C5B9D8]">
+                      Live Loading Media Preview
+                    </span>
+                    <div className="inline-flex rounded-xl border border-[#E4DDD0] dark:border-[#34244C] p-0.5 bg-[#FAF8F4] dark:bg-[#1A1227]">
+                      <button
+                        type="button"
+                        onClick={() => setPromoPreviewViewport('desktop')}
+                        className={`px-3 py-1 rounded-lg text-[11px] font-semibold flex items-center gap-1 cursor-pointer ${
+                          promoPreviewViewport === 'desktop'
+                            ? 'bg-white dark:bg-[#2B1D42] text-[#8B42C9] dark:text-[#F5D061] shadow-xs'
+                            : 'text-[#746B78] dark:text-[#9C8EB2]'
+                        }`}
+                      >
+                        <Monitor className="w-3 h-3" />
+                        <span>Desktop</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setPromoPreviewViewport('mobile')}
+                        className={`px-3 py-1 rounded-lg text-[11px] font-semibold flex items-center gap-1 cursor-pointer ${
+                          promoPreviewViewport === 'mobile'
+                            ? 'bg-white dark:bg-[#2B1D42] text-[#8B42C9] dark:text-[#F5D061] shadow-xs'
+                            : 'text-[#746B78] dark:text-[#9C8EB2]'
+                        }`}
+                      >
+                        <Smartphone className="w-3 h-3" />
+                        <span>Mobile</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="flex justify-center bg-[#09060F] rounded-2xl border border-[#34244C] p-4">
+                    <div
+                      className={`rounded-2xl overflow-hidden border border-[#4C346E] bg-[#120D1B] ${
+                        promoPreviewViewport === 'mobile' ? 'w-64' : 'w-full max-w-md'
+                      }`}
+                    >
+                      {promo.displayMode === 'disabled' ? (
+                        <div className="p-8 text-center text-xs text-[#9C8EB2]">
+                          Disabled Mode — No promotional overlay shown when visitors load the site.
+                        </div>
+                      ) : promo.displayMode === 'video' && promo.videoUrl ? (
+                        promoPreviewViewport === 'mobile' && promo.mobileBehavior === 'poster_fallback' ? (
+                          <img
+                            src={promo.posterUrl || DEFAULT_HERO_IMAGE}
+                            alt="Mobile Poster Fallback"
+                            onError={e => handleImageError(e, DEFAULT_HERO_IMAGE)}
+                            className="w-full max-h-52 object-contain bg-black"
+                          />
+                        ) : (
+                          <video
+                            key={`${promo.videoUrl}-${promoPreviewViewport}`}
+                            poster={promo.posterUrl || DEFAULT_HERO_IMAGE}
+                            controls
+                            muted
+                            playsInline
+                            loop
+                            className="w-full max-h-52 object-contain bg-black"
+                          >
+                            <source src={promo.videoUrl} type={inferVideoMimeType(promo.videoUrl)} />
+                          </video>
+                        )
+                      ) : (
+                        <img
+                          src={
+                            promo.displayMode === 'image'
+                              ? promo.imageUrl || promo.posterUrl || DEFAULT_HERO_IMAGE
+                              : promo.posterUrl || DEFAULT_HERO_IMAGE
+                          }
+                          alt={promo.title || 'Promotional preview'}
+                          onError={e => handleImageError(e, DEFAULT_HERO_IMAGE)}
+                          className="w-full max-h-52 object-contain bg-black"
+                        />
+                      )}
+                    </div>
+                  </div>
                 </div>
 
                 {/* Campaign Title & Subtitle */}
@@ -1359,20 +1721,32 @@ $$;
                   </div>
                 </div>
 
+                {!isSuperAdmin && (
+                  <div className="p-3 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-700/60 text-amber-900 dark:text-amber-200 text-xs flex items-start gap-2">
+                    <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                    <span>
+                      Your account role is <strong>admin</strong>. Only <strong>super_admin</strong> accounts can publish changes to website loading promotional settings.
+                    </span>
+                  </div>
+                )}
+
                 <div className="flex flex-wrap items-center gap-3 pt-2">
                   <button
                     type="submit"
-                    className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-[#8B42C9] to-[#C99A35] dark:from-[#A855F7] dark:to-[#CA8A04] text-white dark:text-[#0A0710] font-semibold text-xs uppercase tracking-wider cursor-pointer"
+                    disabled={!isSuperAdmin || isSavingSettings || isUploadingPromoMedia}
+                    className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-[#8B42C9] to-[#C99A35] dark:from-[#A855F7] dark:to-[#CA8A04] text-white dark:text-[#0A0710] font-semibold text-xs uppercase tracking-wider cursor-pointer disabled:opacity-50 flex items-center gap-2"
                   >
-                    Save Campaign Settings
+                    {isSavingSettings && <RefreshCw className="w-3.5 h-3.5 animate-spin" />}
+                    <span>{isSavingSettings ? 'Publishing...' : 'Save & Publish Loading Media'}</span>
                   </button>
                   <button
                     type="button"
                     onClick={() => setIsPromoPreviewOpen(true)}
-                    className="px-5 py-2.5 rounded-xl bg-[#FAF8F4] dark:bg-[#1A1227] border border-[#E4DDD0] dark:border-[#34244C] text-[#211B25] dark:text-[#E2D4B7] text-xs font-semibold flex items-center gap-1.5 hover:bg-[#F2EBDD] dark:hover:bg-[#251A38] cursor-pointer"
+                    disabled={promo.displayMode === 'disabled'}
+                    className="px-5 py-2.5 rounded-xl bg-[#FAF8F4] dark:bg-[#1A1227] border border-[#E4DDD0] dark:border-[#34244C] text-[#211B25] dark:text-[#E2D4B7] text-xs font-semibold flex items-center gap-1.5 hover:bg-[#F2EBDD] dark:hover:bg-[#251A38] cursor-pointer disabled:opacity-40"
                   >
                     <Eye className="w-3.5 h-3.5" />
-                    <span>Test Preview Pop-Up</span>
+                    <span>Test Modal Pop-Up</span>
                   </button>
                 </div>
               </form>
@@ -1412,7 +1786,14 @@ $$;
                 {settingsSaved && (
                   <div className="p-3 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-500/50 text-emerald-700 dark:text-emerald-300 text-xs flex items-center gap-2">
                     <Check className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
-                    <span>Business settings updated!</span>
+                    <span>Business settings updated in Supabase!</span>
+                  </div>
+                )}
+
+                {settingsError && (
+                  <div className="p-3 rounded-xl bg-red-50 dark:bg-red-950/50 border border-red-300 dark:border-red-700/60 text-red-700 dark:text-red-200 text-xs flex items-start gap-2">
+                    <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                    <span>{settingsError}</span>
                   </div>
                 )}
 
@@ -1483,11 +1864,22 @@ $$;
                   </div>
                 </div>
 
+                {!isSuperAdmin && (
+                  <div className="p-3 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-700/60 text-amber-900 dark:text-amber-200 text-xs flex items-start gap-2">
+                    <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                    <span>
+                      Your account role is <strong>admin</strong>. Only <strong>super_admin</strong> accounts can publish changes to global business settings.
+                    </span>
+                  </div>
+                )}
+
                 <button
                   type="submit"
-                  className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-[#8B42C9] to-[#C99A35] dark:from-[#A855F7] dark:to-[#CA8A04] text-white dark:text-[#0A0710] font-semibold text-xs uppercase tracking-wider cursor-pointer"
+                  disabled={!isSuperAdmin || isSavingSettings}
+                  className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-[#8B42C9] to-[#C99A35] dark:from-[#A855F7] dark:to-[#CA8A04] text-white dark:text-[#0A0710] font-semibold text-xs uppercase tracking-wider cursor-pointer disabled:opacity-50 flex items-center gap-2"
                 >
-                  Save Business Settings
+                  {isSavingSettings && <RefreshCw className="w-3.5 h-3.5 animate-spin" />}
+                  <span>{isSavingSettings ? 'Saving...' : 'Save Business Settings'}</span>
                 </button>
               </form>
             </div>
@@ -1771,21 +2163,37 @@ $$;
                 </label>
               </div>
 
+              {productSaveError && (
+                <div className="p-3 rounded-xl bg-red-50 dark:bg-red-950/50 border border-red-300 dark:border-red-700/60 text-red-700 dark:text-red-200 text-xs flex items-start gap-2">
+                  <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                  <span>{productSaveError}</span>
+                </div>
+              )}
+
               <div className="pt-4 border-t border-[#E4DDD0] dark:border-[#241933] flex justify-end gap-3">
                 <button
                   type="button"
-                  onClick={() => setIsProductModalOpen(false)}
+                  onClick={() => {
+                    setProductSaveError(null);
+                    setIsProductModalOpen(false);
+                  }}
                   className="px-4 py-2 rounded-xl bg-[#FAF8F4] dark:bg-[#1A1227] border border-[#E4DDD0] dark:border-transparent text-[#524858] dark:text-[#C5B9D8] hover:bg-[#F2EBDD] dark:hover:bg-[#251A38] transition-colors cursor-pointer"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  disabled={isUploadingProductImage || !editingProduct.images[0]}
+                  disabled={isUploadingProductImage || isSavingProduct || !editingProduct.images[0]}
                   className="px-5 py-2 rounded-xl bg-gradient-to-r from-[#8B42C9] to-[#C99A35] dark:from-[#A855F7] dark:to-[#CA8A04] text-white dark:text-[#0A0710] font-semibold disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 shadow-md transition-all cursor-pointer"
                 >
-                  {isUploadingProductImage && <RefreshCw className="w-4 h-4 animate-spin" />}
-                  <span>{isUploadingProductImage ? 'Uploading Image...' : 'Save Product'}</span>
+                  {(isUploadingProductImage || isSavingProduct) && <RefreshCw className="w-4 h-4 animate-spin" />}
+                  <span>
+                    {isUploadingProductImage
+                      ? 'Uploading Image...'
+                      : isSavingProduct
+                        ? 'Saving to Supabase...'
+                        : 'Save Product'}
+                  </span>
                 </button>
               </div>
             </form>
@@ -1847,10 +2255,18 @@ $$;
                 />
               </div>
 
+              {categorySaveError && (
+                <div className="p-3 rounded-xl bg-red-50 dark:bg-red-950/50 border border-red-300 dark:border-red-700/60 text-red-700 dark:text-red-200 text-xs flex items-start gap-2">
+                  <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                  <span>{categorySaveError}</span>
+                </div>
+              )}
+
               <div className="pt-4 border-t border-[#E4DDD0] dark:border-[#241933] flex justify-end gap-3">
                 <button
                   type="button"
                   onClick={() => {
+                    setCategorySaveError(null);
                     setIsCategoryModalOpen(false);
                     setEditingCategory(null);
                   }}
@@ -1860,11 +2276,17 @@ $$;
                 </button>
                 <button
                   type="submit"
-                  disabled={isUploadingCategoryImage || !editingCategory.imageUrl}
+                  disabled={isUploadingCategoryImage || isSavingCategory || !editingCategory.imageUrl}
                   className="px-5 py-2 rounded-xl bg-gradient-to-r from-[#8B42C9] to-[#C99A35] dark:from-[#A855F7] dark:to-[#CA8A04] text-white dark:text-[#0A0710] font-semibold disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 shadow-md transition-all cursor-pointer"
                 >
-                  {isUploadingCategoryImage && <RefreshCw className="w-4 h-4 animate-spin" />}
-                  <span>{isUploadingCategoryImage ? 'Uploading Image...' : 'Save Category'}</span>
+                  {(isUploadingCategoryImage || isSavingCategory) && <RefreshCw className="w-4 h-4 animate-spin" />}
+                  <span>
+                    {isUploadingCategoryImage
+                      ? 'Uploading Image...'
+                      : isSavingCategory
+                        ? 'Saving to Supabase...'
+                        : 'Save Category'}
+                  </span>
                 </button>
               </div>
             </form>
@@ -1976,7 +2398,8 @@ $$;
       {isPromoPreviewOpen && (
         <PromotionalFlyerModal
           forceOpen
-          previewConfig={settingsForm.promoCampaign}
+          previewConfig={promo}
+          previewViewport={promoPreviewViewport}
           onClosePreview={() => setIsPromoPreviewOpen(false)}
           onNavigate={() => {
             setIsPromoPreviewOpen(false);
