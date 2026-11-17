@@ -1,4 +1,4 @@
-import { cleanEnv, getSupabaseServerConfig } from './canonicalCatalog';
+import { cleanEnv, getSupabaseServerConfig } from './canonicalCatalog.js';
 
 export type MediaUrlKind = 'product' | 'category' | 'promo_image' | 'promo_video';
 

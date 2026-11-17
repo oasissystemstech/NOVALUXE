@@ -6,8 +6,8 @@ import {
   hashClientIp,
   isAbortError,
   readJsonBody
-} from '../_lib/canonicalCatalog';
-import { applyCors } from '../_lib/cors';
+} from '../_lib/canonicalCatalog.js';
+import { applyCors } from '../_lib/cors.js';
 
 interface VercelRequest extends IncomingMessage {
   body?: any;

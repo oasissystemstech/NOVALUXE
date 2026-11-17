@@ -1,5 +1,5 @@
 import type { IncomingMessage, ServerResponse } from 'http';
-import { cleanEnv } from './canonicalCatalog';
+import { cleanEnv } from './canonicalCatalog.js';
 
 const DEFAULT_PRODUCTION_ORIGINS = [
   'https://novaluxebysennel.com',

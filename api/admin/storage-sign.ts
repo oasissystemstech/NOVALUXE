@@ -4,9 +4,9 @@ import {
   getSupabaseServerConfig,
   isAbortError,
   readJsonBody
-} from '../_lib/canonicalCatalog';
-import { applyCors } from '../_lib/cors';
-import { verifyAdminRequest } from '../_lib/adminAuth';
+} from '../_lib/canonicalCatalog.js';
+import { applyCors } from '../_lib/cors.js';
+import { verifyAdminRequest } from '../_lib/adminAuth.js';
 
 interface VercelRequest extends IncomingMessage {
   body?: any;

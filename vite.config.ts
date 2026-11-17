@@ -2,14 +2,14 @@ import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
 import path from 'path';
 import { defineConfig, loadEnv } from 'vite';
-import { applyCors } from './api/_lib/cors';
-import { processOrderLookup } from './api/orders/lookup';
-import { processCheckoutOrder } from './api/orders/checkout';
-import { processSignedStorageRequest } from './api/admin/storage-sign';
-import { processAdminPersist } from './api/admin/persist';
-import { processAdminLogin } from './api/admin/login';
-import { processAdminVerify } from './api/admin/verify';
-import { processAnalyzeProduct } from './api/admin/analyze-product';
+import { applyCors } from './api/_lib/cors.js';
+import { processOrderLookup } from './api/orders/lookup.js';
+import { processCheckoutOrder } from './api/orders/checkout.js';
+import { processSignedStorageRequest } from './api/admin/storage-sign.js';
+import { processAdminPersist } from './api/admin/persist.js';
+import { processAdminLogin } from './api/admin/login.js';
+import { processAdminVerify } from './api/admin/verify.js';
+import { processAnalyzeProduct } from './api/admin/analyze-product.js';
 
 function adminAuthDevPlugin(serverEnv: Record<string, string>) {
   return {

@@ -1,8 +1,8 @@
 import type { IncomingMessage, ServerResponse } from 'http';
 import { GoogleGenAI, ThinkingLevel, Type } from '@google/genai';
-import { cleanEnv, readJsonBody } from '../_lib/canonicalCatalog';
-import { applyCors } from '../_lib/cors';
-import { verifyAdminRequest } from '../_lib/adminAuth';
+import { cleanEnv, readJsonBody } from '../_lib/canonicalCatalog.js';
+import { applyCors } from '../_lib/cors.js';
+import { verifyAdminRequest } from '../_lib/adminAuth.js';
 
 interface VercelRequest extends IncomingMessage {
   body?: any;

@@ -1,6 +1,6 @@
 import type { IncomingMessage } from 'http';
 import crypto from 'crypto';
-import { cleanEnv, fetchWithTimeout, getSupabaseServerConfig } from './canonicalCatalog';
+import { cleanEnv, fetchWithTimeout, getSupabaseServerConfig } from './canonicalCatalog.js';
 
 export type AdminRole = 'admin' | 'super_admin';
 
