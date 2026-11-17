@@ -70,13 +70,14 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
                 return (
                   <div key={`${item.product.id}-${item.selectedVariant?.id || 'base'}-${idx}`} className="py-4 flex gap-4">
                     <div className="w-20 h-20 rounded-lg bg-[#F2EBDD] dark:bg-[#1C1428] border border-[#E2D9C8] dark:border-[#3B2D54]/50 overflow-hidden shrink-0">
-                      <img
-                        src={item.product.images[0]}
-                        alt={item.product.name}
-                        referrerPolicy="no-referrer"
-                        onError={handleImageError}
-                        className="w-full h-full object-cover"
-                      />
+                      <div className="product-image-container !p-1.5 w-full h-full">
+                        <img
+                          src={item.product.images[0]}
+                          alt={item.product.name}
+                          referrerPolicy="no-referrer"
+                          onError={handleImageError}
+                        />
+                      </div>
                     </div>
                     <div className="flex-1 min-w-0 flex flex-col justify-between">
                       <div>

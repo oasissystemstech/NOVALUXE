@@ -119,13 +119,14 @@ export const SearchModal: React.FC<SearchModalProps> = ({
                   >
                     <div className="flex items-center gap-3 min-w-0">
                       <div className="w-12 h-12 rounded-lg bg-[#F2EBDD] dark:bg-[#251A38] overflow-hidden shrink-0 border border-[#E2D9C8] dark:border-[#3B2D54]/50">
-                        <img
-                          src={product.images[0]}
-                          alt={product.name}
-                          referrerPolicy="no-referrer"
-                          onError={handleImageError}
-                          className="w-full h-full object-cover"
-                        />
+                        <div className="product-image-container !p-1 w-full h-full">
+                          <img
+                            src={product.images[0]}
+                            alt={product.name}
+                            referrerPolicy="no-referrer"
+                            onError={handleImageError}
+                          />
+                        </div>
                       </div>
                       <div className="min-w-0">
                         <p className="text-xs text-[#8B42C9] dark:text-[#A855F7] tracking-wider uppercase font-medium">

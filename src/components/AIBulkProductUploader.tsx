@@ -57,6 +57,7 @@ interface BulkProductDraft {
   previewUrl: string;
   hostedImageUrl: string;
   status: DraftStatus;
+  statusMessage?: string;
   errorMessage?: string;
   // Editable fields
   name: string;
@@ -97,7 +98,6 @@ const ALLOWED_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/jpg'
 const ALLOWED_EXTENSIONS = ['jpg', 'jpeg', 'png', 'webp'];
 
 async function prepareImagePayloadForAI(file: File): Promise<{ base64: string; mimeType: string }> {
-  // Downscale oversized images on client canvas so JSON API payload stays well under serverless limits
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onerror = () => reject(new Error('Could not read file for AI analysis.'));
@@ -142,11 +142,13 @@ async function prepareImagePayloadForAI(file: File): Promise<{ base64: string; m
           return;
         }
         ctx.drawImage(img, 0, 0, width, height);
-        const compressedDataUrl = canvas.toDataURL('image/jpeg', 0.85);
+        const isPng = file.type === 'image/png';
+        const outputMime = isPng ? 'image/png' : 'image/jpeg';
+        const compressedDataUrl = canvas.toDataURL(outputMime, 0.82);
         const commaIdx = compressedDataUrl.indexOf(',');
         resolve({
           base64: commaIdx >= 0 ? compressedDataUrl.slice(commaIdx + 1) : compressedDataUrl,
-          mimeType: 'image/jpeg'
+          mimeType: outputMime
         });
       };
       img.src = dataUrl;
@@ -347,14 +349,39 @@ export const AIBulkProductUploader: React.FC = () => {
 
       try {
         setDrafts(prev =>
-          prev.map(d => (d.localId === draft.localId ? { ...d, status: 'uploading', errorMessage: undefined } : d))
+          prev.map(d =>
+            d.localId === draft.localId
+              ? {
+                  ...d,
+                  status: 'uploading',
+                  statusMessage: 'Preparing & optimizing image for AI analysis...',
+                  errorMessage: undefined
+                }
+              : d
+          )
+        );
+
+        // Simulate short pause for optimization step display
+        await new Promise(r => setTimeout(r, 200));
+
+        setDrafts(prev =>
+          prev.map(d =>
+            d.localId === draft.localId
+              ? { ...d, statusMessage: 'Uploading original image to Supabase Storage...' }
+              : d
+          )
         );
         const hostedUrl = await uploadImageToStorage(draft.file, batchId);
 
         setDrafts(prev =>
           prev.map(d =>
             d.localId === draft.localId
-              ? { ...d, hostedImageUrl: hostedUrl, status: 'analyzing' }
+              ? {
+                  ...d,
+                  hostedImageUrl: hostedUrl,
+                  status: 'analyzing',
+                  statusMessage: 'Analyzing product packaging with Gemini AI...'
+                }
               : d
           )
         );
@@ -374,6 +401,7 @@ export const AIBulkProductUploader: React.FC = () => {
               ? {
                   ...d,
                   status: 'awaiting_review',
+                  statusMessage: 'Extracting catalogue information & verifying metadata...',
                   hostedImageUrl: hostedUrl,
                   name: analysis.productName || '',
                   brand: analysis.brand || '',
@@ -1033,9 +1061,12 @@ export const AIBulkProductUploader: React.FC = () => {
                     <div className="flex items-center gap-2 text-xs text-[#8B42C9] dark:text-[#C084FC] bg-[#FAF8F4] dark:bg-[#171022] px-4 py-2.5 rounded-xl border border-[#E4DDD0] dark:border-[#2E2044]">
                       <Loader2 className="w-4 h-4 animate-spin" />
                       <span>
-                        {draft.status === 'queued' && 'Waiting in queue...'}
-                        {draft.status === 'uploading' && 'Uploading photo to Supabase Storage...'}
-                        {draft.status === 'analyzing' && 'Extracting visible packaging text & catalog details...'}
+                        {draft.statusMessage ||
+                          (draft.status === 'queued'
+                            ? 'Waiting in queue...'
+                            : draft.status === 'uploading'
+                            ? 'Preparing & uploading image...'
+                            : 'Analyzing packaging with AI...')}
                       </span>
                     </div>
                   )}

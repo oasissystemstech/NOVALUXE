@@ -24,7 +24,15 @@ export async function processAnalyzeProduct(
   req: VercelRequest,
   envSource: Record<string, string | undefined> = process.env
 ): Promise<{ status: number; body: Record<string, any> }> {
+  const tTotalStart = Date.now();
+  let authDurationMs = 0;
+  let aiRequestDurationMs = 0;
+  let parseDurationMs = 0;
+
+  const tAuthStart = Date.now();
   const auth = await verifyAdminRequest(req, envSource);
+  authDurationMs = Date.now() - tAuthStart;
+
   if (!auth.authorized || (auth.role !== 'admin' && auth.role !== 'super_admin')) {
     return {
       status: auth.configError ? 503 : auth.authorized ? 403 : 401,
@@ -72,22 +80,20 @@ export async function processAnalyzeProduct(
       }
     });
 
-    const prompt = `You are a meticulous luxury cosmetics, skincare, personal care, and retail merchandiser for NOVALUXE by Sennel (a beauty & everyday essentials boutique in Monrovia, Liberia).
-
-Analyze the uploaded product photograph (filename: "${fileName}") and produce accurate structured product catalogue data.
-
-STRICT ACCURACY RULES:
-1. Extract text and facts clearly visible on the product packaging (product name, brand name, volume/weight/count like "50ml" or "100g", key ingredients printed on label, finish/shade/scent visible).
-2. If a brand name, size/volume, or ingredient list is NOT clearly legible or visible in the photo, leave it as "" (empty string) or [] (empty array) and add that field name to "needsVerificationFields". NEVER invent, hallucinate, or guess ingredients, manufacturers, certifications, or packaging sizes.
-3. NEVER generate, guess, or suggest a selling price anywhere in your output. Selling prices are strictly managed by store administrators.
-4. Do NOT make medical, therapeutic, or unverified clinical claims in descriptions or features. Keep copy refined, accurate, editorial, and grounded in what the product visibly is.
-5. Choose the closest matching category strictly from this store category list:
+    const prompt = `You are a luxury retail merchandiser for NOVALUXE by Sennel. Analyze product photo "${fileName}" and output JSON.
+RULES:
+1. Extract text/facts visible on packaging (name, brand, size/volume, ingredients).
+2. If illegible, return "" or [] and add field to "needsVerificationFields". Never hallucinate.
+3. Never generate or guess selling prices.
+4. No unverified medical/therapeutic claims.
+5. Category must be strictly from:
 ${categoryGuide}
-6. Populate "extractedFields" with field names visibly read directly from the packaging (e.g., ["productName", "brand", "sizeOrVolume"]), "suggestedFields" with merchandiser-generated fields (e.g., ["description", "suggestedTags", "suggestedSku"]), and "needsVerificationFields" with any items the admin should double-check visually (always include "price" if missing from packaging, plus any obscured label info).
-7. Generate a clean uppercase SKU suggestion formatted like "NVL-XXX-000" (or reading visible batch/SKU if present).`;
+6. Populate "extractedFields", "suggestedFields", and "needsVerificationFields" (include "price").
+7. Suggest uppercase SKU like "NVL-SKN-000".`;
 
+    const tAiStart = Date.now();
     const response = await ai.models.generateContent({
-      model: 'gemini-4-hydrogen',
+      model: 'gemini-3.1-flash-lite',
       contents: {
         parts: [
           {
@@ -100,51 +106,51 @@ ${categoryGuide}
         ]
       },
       config: {
-        thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
+        thinkingConfig: { thinkingLevel: ThinkingLevel.MINIMAL },
         responseMimeType: 'application/json',
         responseSchema: {
           type: Type.OBJECT,
           properties: {
             productName: { type: Type.STRING, description: 'Clear commercial product title.' },
-            brand: { type: Type.STRING, description: 'Brand name only if clearly visible on packaging; empty string otherwise.' },
-            suggestedCategoryId: { type: Type.STRING, description: 'Exact id from the provided store categories list.' },
-            suggestedCategoryName: { type: Type.STRING, description: 'Exact name from the provided store categories list.' },
-            productType: { type: Type.STRING, description: 'Short product type e.g. Eau de Parfum, Facial Serum, Matte Lipstick, Body Butter.' },
-            description: { type: Type.STRING, description: 'Refined 2-3 sentence luxury retail description grounded in visible packaging without medical claims.' },
-            sizeOrVolume: { type: Type.STRING, description: 'Net weight, volume, or count ONLY if visibly printed on label; empty string otherwise.' },
-            specifications: { type: Type.STRING, description: 'Concise packaging/format specifications visible from the image (e.g. bottle type, shade tone, finish).' },
+            brand: { type: Type.STRING, description: 'Brand name if visible; empty otherwise.' },
+            suggestedCategoryId: { type: Type.STRING, description: 'Exact category id.' },
+            suggestedCategoryName: { type: Type.STRING, description: 'Exact category name.' },
+            productType: { type: Type.STRING, description: 'Short product type.' },
+            description: { type: Type.STRING, description: 'Concise 2-3 sentence luxury description.' },
+            sizeOrVolume: { type: Type.STRING, description: 'Net weight, volume, or count if visible.' },
+            specifications: { type: Type.STRING, description: 'Packaging format specifications.' },
             keyIngredients: {
               type: Type.ARRAY,
               items: { type: Type.STRING },
-              description: 'Key ingredients ONLY if clearly readable on the packaging or product title.'
+              description: 'Key ingredients readable on packaging.'
             },
             features: {
               type: Type.ARRAY,
               items: { type: Type.STRING },
-              description: '3 to 4 concise factual product highlights grounded in the packaging.'
+              description: '3-4 factual highlights.'
             },
             suggestedTags: {
               type: Type.ARRAY,
               items: { type: Type.STRING },
-              description: '3 to 5 lowercase search keywords.'
+              description: '3-5 search keywords.'
             },
-            suggestedSku: { type: Type.STRING, description: 'Suggested SKU identifier e.g. NVL-SKN-412.' },
+            suggestedSku: { type: Type.STRING, description: 'Suggested SKU e.g. NVL-SKN-101.' },
             extractedFields: {
               type: Type.ARRAY,
               items: { type: Type.STRING },
-              description: 'List of fields directly extracted from visible label text.'
+              description: 'Fields extracted from label.'
             },
             suggestedFields: {
               type: Type.ARRAY,
               items: { type: Type.STRING },
-              description: 'List of fields synthesized by AI merchandiser.'
+              description: 'Fields synthesized by AI.'
             },
             needsVerificationFields: {
               type: Type.ARRAY,
               items: { type: Type.STRING },
-              description: 'List of fields requiring admin verification (e.g. brand, sizeOrVolume, keyIngredients, category).'
+              description: 'Fields needing admin verification.'
             },
-            confidenceNote: { type: Type.STRING, description: 'Brief 1-sentence note on label legibility and what needs admin verification.' }
+            confidenceNote: { type: Type.STRING, description: '1-sentence confidence summary.' }
           },
           required: [
             'productName',
@@ -167,15 +173,29 @@ ${categoryGuide}
         }
       }
     });
+    aiRequestDurationMs = Date.now() - tAiStart;
 
+    const tParseStart = Date.now();
     const parsedText = (response.text ?? '{}').trim();
     const analysis = JSON.parse(parsedText);
+    parseDurationMs = Date.now() - tParseStart;
+
+    const totalDurationMs = Date.now() - tTotalStart;
+    console.info(
+      `[AI Analyze] file="${fileName}" auth=${authDurationMs}ms ai=${aiRequestDurationMs}ms parse=${parseDurationMs}ms total=${totalDurationMs}ms`
+    );
 
     return {
       status: 200,
       body: {
         success: true,
-        analysis
+        analysis,
+        timings: {
+          authDurationMs,
+          aiRequestDurationMs,
+          parseDurationMs,
+          totalDurationMs
+        }
       }
     };
   } catch (err: any) {

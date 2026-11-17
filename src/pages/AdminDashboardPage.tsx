@@ -841,13 +841,16 @@ $$;
                         return (
                           <tr key={p.id} className="hover:bg-[#FAF8F4] dark:hover:bg-[#1A1227]">
                             <td className="p-4 flex items-center gap-3">
-                              <img
-                                src={p.images[0]}
-                                alt={p.name}
-                                referrerPolicy="no-referrer"
-                                onError={handleImageError}
-                                className="w-10 h-10 rounded-lg object-cover bg-[#F2EBDD] dark:bg-[#221735] shrink-0"
-                              />
+                              <div className="w-10 h-10 rounded-lg bg-[#F2EBDD] dark:bg-[#221735] overflow-hidden shrink-0 border border-[#E4DDD0] dark:border-[#34244C]">
+                                <div className="product-image-container !p-0.5 w-full h-full">
+                                  <img
+                                    src={p.images[0]}
+                                    alt={p.name}
+                                    referrerPolicy="no-referrer"
+                                    onError={handleImageError}
+                                  />
+                                </div>
+                              </div>
                               <div>
                                 <p className="font-semibold text-[#211B25] dark:text-[#F3EFEA]">{p.name}</p>
                                 <p className="text-[11px] text-[#746B78] dark:text-[#8C829B]">

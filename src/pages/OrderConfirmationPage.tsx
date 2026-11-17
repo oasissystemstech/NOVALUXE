@@ -150,13 +150,14 @@ _Sent via NOVALUXE Official Website_`;
               <div className="flex items-center gap-3 min-w-0">
                 {item.imageUrl && (
                   <div className="w-12 h-12 rounded-lg bg-[#F2EBDD] dark:bg-[#1A1227] overflow-hidden shrink-0 border border-[#E4DDD0] dark:border-[#34244C]/50">
-                    <img
-                      src={item.imageUrl}
-                      alt={item.productName}
-                      referrerPolicy="no-referrer"
-                      onError={handleImageError}
-                      className="w-full h-full object-cover"
-                    />
+                    <div className="product-image-container !p-1 w-full h-full">
+                      <img
+                        src={item.imageUrl}
+                        alt={item.productName}
+                        referrerPolicy="no-referrer"
+                        onError={handleImageError}
+                      />
+                    </div>
                   </div>
                 )}
                 <div className="min-w-0">

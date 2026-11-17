@@ -78,13 +78,14 @@ export const CartPage: React.FC<CartPageProps> = ({
                 >
                   <div className="flex items-center gap-4 min-w-0">
                     <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-xl bg-[#F2EBDD] dark:bg-[#1A1227] border border-[#E4DDD0] dark:border-[#34244C]/60 overflow-hidden shrink-0">
-                      <img
-                        src={item.product.images[0]}
-                        alt={item.product.name}
-                        referrerPolicy="no-referrer"
-                        onError={handleImageError}
-                        className="w-full h-full object-cover"
-                      />
+                      <div className="product-image-container !p-2 w-full h-full">
+                        <img
+                          src={item.product.images[0]}
+                          alt={item.product.name}
+                          referrerPolicy="no-referrer"
+                          onError={handleImageError}
+                        />
+                      </div>
                     </div>
                     <div className="space-y-1 min-w-0">
                       <h3 className="text-base font-medium text-[#211B25] dark:text-[#F3EFEA] truncate">

@@ -97,16 +97,15 @@ export const ProductDetailPage: React.FC<ProductDetailPageProps> = ({
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 lg:gap-14">
         {/* Left: Image Gallery */}
         <div className="lg:col-span-7 space-y-4">
-          <div className="aspect-[4/3] rounded-3xl bg-[#F2EBDD] dark:bg-[#140D1F] border border-[#E4DDD0] dark:border-[#2B1D3E] overflow-hidden relative shadow-xl">
+          <div className="product-image-container rounded-3xl bg-[#F2EBDD] dark:bg-[#140D1F] border border-[#E4DDD0] dark:border-[#2B1D3E] relative shadow-xl">
             <img
               src={product.images[activeImageIdx] || product.images[0]}
               alt={product.name}
               referrerPolicy="no-referrer"
               onError={handleImageError}
-              className="w-full h-full object-cover"
             />
             {product.isNewArrival && (
-              <span className="absolute top-4 left-4 bg-[#C99A35] dark:bg-[#F5D061] text-[#0A0710] font-bold text-xs uppercase px-3 py-1 rounded-full shadow-md">
+              <span className="absolute top-4 left-4 bg-[#C99A35] dark:bg-[#F5D061] text-[#0A0710] font-bold text-xs uppercase px-3 py-1 rounded-full shadow-md z-10">
                 New Arrival
               </span>
             )}
@@ -119,19 +118,20 @@ export const ProductDetailPage: React.FC<ProductDetailPageProps> = ({
                 <button
                   key={idx}
                   onClick={() => setActiveImageIdx(idx)}
-                  className={`w-20 h-20 rounded-xl overflow-hidden border-2 transition-all shrink-0 cursor-pointer ${
+                  className={`w-20 h-20 rounded-xl overflow-hidden border-2 transition-all shrink-0 cursor-pointer bg-[#F2EBDD] dark:bg-[#140D1F] ${
                     activeImageIdx === idx
                       ? 'border-[#C99A35] dark:border-[#F5D061] scale-102'
                       : 'border-[#E4DDD0] dark:border-[#2B1D3E] opacity-70 hover:opacity-100'
                   }`}
                 >
-                  <img
-                    src={img}
-                    alt={`${product.name} view ${idx + 1}`}
-                    referrerPolicy="no-referrer"
-                    onError={handleImageError}
-                    className="w-full h-full object-cover"
-                  />
+                  <div className="product-image-container !p-1 w-full h-full">
+                    <img
+                      src={img}
+                      alt={`${product.name} view ${idx + 1}`}
+                      referrerPolicy="no-referrer"
+                      onError={handleImageError}
+                    />
+                  </div>
                 </button>
               ))}
             </div>

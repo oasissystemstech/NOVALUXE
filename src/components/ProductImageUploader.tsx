@@ -227,13 +227,15 @@ export const ProductImageUploader: React.FC<ProductImageUploaderProps> = ({
       {hasImage ? (
         <div className="relative rounded-2xl border border-[#E4DDD0] dark:border-[#3B2D54] bg-[#FAF8F4] dark:bg-[#120D1B] p-4 flex flex-col sm:flex-row items-center gap-4 transition-all">
           <div className="relative group shrink-0 w-28 h-28 sm:w-32 sm:h-32 rounded-xl overflow-hidden bg-white dark:bg-[#1A1227] border border-[#E4DDD0] dark:border-[#2E1E4B]">
-            <img
-              src={imageUrl}
-              alt="Product Preview"
-              referrerPolicy="no-referrer"
-              className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
-              onError={handleImageError}
-            />
+            <div className="product-image-container !p-2 w-full h-full">
+              <img
+                src={imageUrl}
+                alt="Product Preview"
+                referrerPolicy="no-referrer"
+                className="transition-transform duration-300 group-hover:scale-105"
+                onError={handleImageError}
+              />
+            </div>
             {isUploading && (
               <div className="absolute inset-0 bg-[#0A0710]/80 backdrop-blur-xs flex flex-col items-center justify-center gap-2 p-2 text-center">
                 <Loader2 className="w-6 h-6 text-[#F5D061] animate-spin" />

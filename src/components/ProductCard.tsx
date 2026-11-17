@@ -37,13 +37,13 @@ export const ProductCard: React.FC<ProductCardProps> = ({
       className="group bg-white dark:bg-[#120D1A] rounded-2xl border border-[#E4DDD0] hover:border-[#8B42C9]/50 dark:border-[#261B36] dark:hover:border-[#4C386A] overflow-hidden flex flex-col justify-between transition-all duration-200 hover:-translate-y-1 hover:shadow-xl cursor-pointer shadow-xs dark:shadow-none"
     >
       {/* Product Image Slot */}
-      <div className="relative aspect-[4/3] bg-[#F2EBDD] dark:bg-[#1A1226] overflow-hidden">
+      <div className="product-image-container relative bg-[#F2EBDD] dark:bg-[#1A1226]">
         <img
           src={product.images[0] || DEFAULT_PRODUCT_IMAGE}
           alt={product.name}
           referrerPolicy="no-referrer"
           onError={handleImageError}
-          className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+          className="transition-transform duration-500 group-hover:scale-105"
         />
 
         {/* Hover Quick Action Buttons */}
